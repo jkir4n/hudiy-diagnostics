@@ -32,9 +32,13 @@ constraint decisions (`ARCHITECTURE_NOTES.md`), feature survey
 6. **Input modalities — touch + keys + gestures, feature parity**: the app
    is fully operable through (a) touchscreen, (b) keyboard navigation keys
    (UP/DOWN/LEFT/RIGHT move a visible focus ring, ENTER activates,
-   ESC goes back — Hudiy delivers these to the webview as normal key
-   events; the KeyEvent message family, Api.proto 631+, is the same key
-   vocabulary), and (c) gestures (horizontal swipe = back, vertical =
+   ESC goes back - the key vocabulary is the KeyType enum in Api.proto:
+   UP/DOWN/LEFT/RIGHT, SCROLL_LEFT/RIGHT = the knob, ENTER, BACK, HOME,
+   TOGGLE_INPUT_FOCUS. Pages receive keys through the hudiy={} JS bridge
+   contract - onMoveToNextControl/onMoveToPreviousControl return true=consumed,
+   onTriggered = ENTER, onGoBack false = Hudiy handles back (knob always wins),
+   focus ring renders from hudiy.colorScheme; see
+   docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md, and (c) gestures (horizontal swipe = back, vertical =
    scroll). Every interactive element is a real focusable control with a
    tap handler AND a key activation path; nothing is click-only or
    gesture-only. Frontend acceptance: every screen operated three ways —
