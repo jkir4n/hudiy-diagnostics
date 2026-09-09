@@ -1,6 +1,6 @@
 # AGENTS.md — Hudiy Diagnostics
 
-**Last updated:** 2026-09-09 (Phase 1)
+**Last updated:** 2026-09-10 (Phase 1 complete, V1_SPEC ready)
 
 ## 1. What this project is
 A Hudiy **menu-launched** car diagnostics app. Phase 1 = research + captured data only. Backend and frontend are deliberately NOT started (owner's explicit instruction: gather data first, build later).
@@ -20,16 +20,19 @@ Non-negotiable requirements (owner's verbatim constraints):
 
 ## 3. HARD CONSTRAINTS (from live probing — do not re-learn the hard way)
 1. **Single served OBD process (definitive, 09 Sep night).** Hudiy serves OBD query responses to exactly ONE process — the race-dash charts process. A byte-identical probe client (same class, same name pattern, same subscription, connected first on a fresh Hudiy with charts disabled at boot) receives NOTHING — silently, not even ObdManager cancels. Theories disproven: first-querier-wins, subscription-gated, timing-based. Likely socket-credential (SO_PEERCRED) or internal whitelist. Consequence: diagnostics MUST proxy through the charts process (or own the slot on installs without race-dash). See `docs/ARCHITECTURE_NOTES.md` §DEFINITIVE CONSTRAINT.
-2. **ELM327 wedge hazard.** A Mode 09 CALID (`0904`) multi-frame read wedged the adapter irrecoverably (only a Pi reboot recovered it). Rules: long multi-frame reads = single-flight, ≤15s timeout, one retry max, never concurrent with live polling, telemetry lane never blocked by a diagnostics query.
+2. **Query discipline (wedge claim RETRACTED 10 Sep).** The round-2/3 'ELM wedge' was ObdManager starving an unserved client — NOT ELM fragility. Multi-frame reads (`0904`) are safe through the served client (proven repeatedly). Keep the discipline anyway: single-flight, ≤15s timeout, one retry max, telemetry lane never blocked by diagnostics queries.
 3. **`NO DATA` arrives as empty string** through Hudiy — treat empty as a valid negative answer, not an error.
 4. **Multi-frame parsing.** Response frames concatenate `0:…1:…2:…` with variable hex lengths. Parse sequentially (frame-count prefix + slice). NEVER regex — `7E8\d+:` patterns swallow data digits (caused an infinite loop + gateway OOM once).
 5. **Loop discipline in agent tooling:** no unbounded while-loops around `str.find()` in tool cells (find() returns -1 forever on miss → memory runaway).
 
 ## 4. Phase plan
-- **Phase 1 (DONE):** protocol research + live fixtures + this repo.
-- **Phase 2a (NEXT):** settle the OBD client-slot design (arbiter / proxy-through-charts / menu-exclusivity / Hudiy multi-client probe). Owner decides with data.
-- **Phase 2b:** backend then frontend, split to specialist cards (standing directive: FE+BE → separate specialist cards, backend first).
-- Missing fixtures to capture when next on-car: clean Mode `0A`, `0104`, `0133`, clean `0685`, `0904`/`0906` (guarded).
+- **Phase 1 (DONE 10 Sep):** protocol research + ALL fixtures (positive AND negative) + feature survey + `docs/V1_SPEC.md` (build-ready).
+- **Phase 2a (DECIDED):** proxy lane through the charts process; standalone mode when race-dash absent. No other option needed.
+- **Phase 2b (NEXT):** backend then frontend, split to specialist cards (standing directive: FE+BE → separate specialist cards, backend first). Backend card constraint block = `docs/V1_SPEC.md` + `docs/ARCHITECTURE_NOTES.md` + `fixtures/`.
+
+## 4a. Vehicle-state hazards (verified 10 Sep)
+- **Stale ObdManager after car power-cycle:** ELM BT shows 'Connected', clients subscribed, but every query silently dropped (health `last_obd_age_s` climbs; sometimes `ObdManager cancel id: N` in Hudiy log). Recovery = kill -9 Hudiy + relaunch (device reopens in seconds when car powered; validated 2x). The diagnostics UI must show 'ECU reconnecting', never hang.
+- **Negative fixtures are real data:** Mode 0A and Mode 02 (freeze frame) are NOT supported on the reference ECU. v1 handles this via runtime support bits — the same rules make it correct on any car.
 
 ## 5. Verification culture
 - Every protocol claim in docs must trace to a fixture JSON or a cited source in `docs/OBD2_DIAGNOSTICS_RESEARCH.md`.

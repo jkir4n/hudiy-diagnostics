@@ -24,3 +24,16 @@ All notable changes. Format: date — phase — what.
 
 ### Deferred (owner instruction)
 - Backend + frontend build — starts only after data gathering confirmed complete. Split FE/BE to specialist cards, backend first.
+
+## 2026-09-10 — Phase 1 close-out: definitive constraint + all fixtures + v1 spec
+
+### Added
+- `fixtures/capture_final_fixtures.jsonl` + `fixtures/decoded_final_fixtures.json` — served-client capture route (charts.py copy + injected capture thread): clean `0104` (0% idle), `0133` (101 kPa), clean multi-frame `0685`, `0904` CAL-ID `'00Z000000Z  0000'`, `0906` CVN `0xA5A5A5A5` (5–6 consistent cycles each).
+- `fixtures/m02_freezeframe_probe.jsonl` + `fixtures/m02_freezeframe_decoded.json` — Mode 02 probe: freeze frame **not supported** (0200/0202 empty 6/6); `0140`=`CC D2 00 00` completes the support map (PIDs 41/42/45/46/49/4A/4C/4F; nothing beyond 0x5F).
+- `docs/FEATURE_SURVEY_FINDINGS.md` — researcher-card survey: 9 consumer apps, 14 OSS projects, 31 sources; DTC-text source = Wal33D/dtc-database (MIT SQLite, bundled offline); vPIC VIN decode verified live (Indian VW coverage weak — decode is best-effort).
+- `docs/V1_SPEC.md` — build-ready spec: hard rules, feature table mapped to fixtures, backend/frontend shape, build order.
+
+### Changed (corrections to earlier entries)
+- **"ELM327 wedges irrecoverably on long multi-frame CALID reads" is RETRACTED.** The round-2/3 wedge was Hudiy ObdManager starving an unserved client, not ELM fragility. Multi-frame reads (`0904`) are safe through the served client (proven repeatedly 10 Sep).
+- **"Single primed client per boot" refined to the definitive model**: Hudiy serves OBD to exactly ONE process (the charts process). A byte-identical probe client gets silent nothing — not timing, not subscription, not connection order. Likely internal (SO_PEERCRED-style) discrimination. Design consequence: diagnostics must proxy through the charts process; standalone mode when race-dash absent.
+- Status: Phase 1 (research + data gathering) **COMPLETE**. Phase 2 build order unchanged: backend specialist card first, then frontend.

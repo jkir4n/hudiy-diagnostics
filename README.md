@@ -30,3 +30,9 @@ fixtures/
 ## Next phases (pending)
 - Phase 2a: settle OBD client-slot design (arbiter vs proxy vs exclusivity) — options documented.
 - Phase 2b: backend + frontend (split to specialist cards; backend first).
+
+
+---
+
+**Update 2026-09-10:** Phase 1 complete. All fixtures captured (including negative fixtures: freeze-frame and Mode 0A not supported on the reference car — handled by runtime discovery). Definitive transport constraint + v1 build spec in `docs/V1_SPEC.md`; feature survey in `docs/FEATURE_SURVEY_FINDINGS.md`. Phase 2: backend specialist first, then frontend.
+
