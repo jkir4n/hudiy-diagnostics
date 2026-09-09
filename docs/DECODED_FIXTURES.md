@@ -40,3 +40,48 @@ All values below are decoded from `fixtures/round1_full_capture.json` raw string
 2. **Multi-frame responses** concatenate frames as `0:… 1:… 2:…` with **variable hex-length CFs** — parse by frame-count prefix + sequential slicing, NEVER regex (regex `7E8\d+:` swallows data digits).
 3. **Second-client starvation**: post-reboot, Hudiy routes OBD query responses only to its first-boot primed OBD client (charts.py). A second TCP client's queries are silently dropped and the client is killed after ~7 unanswered requests. → diagnostics app design constraint, see `docs/ARCHITECTURE_NOTES.md`.
 4. **ELM wedge hazard**: a multi-frame Mode 09 CALID query (`0904`) wedged the ELM327 hard; only a full Pi reboot recovered it. Multi-frame long reads must be single-flight, timeout-guarded, one-retry-max in the app.
+
+
+---
+
+# Session 2 (2026-09-10 ~00:15–01:45 IST) — served-client captures
+
+Method change: captures ran through a **copy of charts.py with an injected capture
+thread** (see `tools/README.md`), because the single-served-process constraint
+(`docs/ARCHITECTURE_NOTES.md`) means no other client gets answers.
+
+## Final 6-mode fixtures (`capture_final_fixtures.jsonl` + `decoded_final_fixtures.json`)
+- **0104 (load)**: `0 %` at idle — clean fixture.
+- **0133 (baro)**: `0x65` = **101 kPa** (resp `413365`).
+- **0685 (boost system OBDMID)**: clean multi-frame, consistent every cycle — the round-1
+  ambiguity is resolved; see raw file.
+- **0904 (CALID)**: `00Z000000Z  0000` — read **repeatedly, safely** through the served client.
+- **0906 (CVN)**: `0xA5A5A5A5`.
+- **0A (permanent DTCs): NOT SUPPORTED** — absent from the 4100 support bitmap; every apparent
+  "answer" (`4111E9`-style) was a stale-buffer echo. Negative fixture with app rules in
+  `decoded_final_fixtures.json`. (Retires the round-1 '0A suspect aliasing' note above.)
+
+## Mode 02 + support-map completion (`m02_freezeframe_probe.jsonl` + `m02_freezeframe_decoded.json`)
+- **0200 / 0202 (freeze frame): NOT SUPPORTED** — empty 6/6 cycles. App keys the feature off the
+  0200 support check at runtime; report substitutes 0145/0149.
+- **0140**: `CC D2 00 00` → PIDs 41–60 supported: `41 42 45 46 49 4A 4C 4F`; nothing beyond 0x5F
+  (0160/0180/01A0 all empty). **Support map now complete for this ECU.**
+
+## Readiness wall fixtures (`readiness_m0101_m0141.jsonl` + `readiness_m0101_decoded.json`)
+- **0101 / 0141**: `4101000EA800` / `4141000EA800` — identical (no recent code clear).
+  - A=`0x00`: MIL off, 0 stored DTCs.
+  - B=`0x0E`: **bit B3 = 1 → diesel engine type** (J1979 runtime discriminator); common tests:
+    fuel system + comprehensive components available & complete; misfire bit 0.
+  - C=`0xA8`: diesel-specific **availability** — boost pressure + exhaust gas sensor + EGR/VVT
+    available; NMHC / NOx-SCR / PM-filter bits 0.
+  - D=`0x00`: all available diesel monitors **complete** (J1979 completeness bit: 0 = complete).
+- Semantics to cross-check at build time (flagged in the decoded JSON): the availability/
+  completeness split and the exact diesel bit ordering have two plausible readings across
+  sources; raw bytes above are ground truth. The app must parse B3 at runtime and pick the
+  diesel naming table — never hardcode.
+
+## Corrections to round-1 entries (carry forward)
+- **ELM wedge claim RETRACTED**: the round-2/3 wedge was ObdManager starving an unserved
+  client, not ELM327 fragility. Multi-frame reads (0904) are safe through the served client.
+- **"Second-client starvation" refined**: Hudiy serves OBD to exactly ONE process
+  (definitive; see `docs/ARCHITECTURE_NOTES.md`). Not timing, not subscription, not order.

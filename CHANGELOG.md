@@ -37,3 +37,17 @@ All notable changes. Format: date — phase — what.
 - **"ELM327 wedges irrecoverably on long multi-frame CALID reads" is RETRACTED.** The round-2/3 wedge was Hudiy ObdManager starving an unserved client, not ELM fragility. Multi-frame reads (`0904`) are safe through the served client (proven repeatedly 10 Sep).
 - **"Single primed client per boot" refined to the definitive model**: Hudiy serves OBD to exactly ONE process (the charts process). A byte-identical probe client gets silent nothing — not timing, not subscription, not connection order. Likely internal (SO_PEERCRED-style) discrimination. Design consequence: diagnostics must proxy through the charts process; standalone mode when race-dash absent.
 - Status: Phase 1 (research + data gathering) **COMPLETE**. Phase 2 build order unchanged: backend specialist card first, then frontend.
+
+## 2026-09-10 — Research round 2 + readiness fixture (pre-build close-out)
+
+### Added
+- `docs/HUDIY_UI_API_INVENTORY.md` — 51-message protobuf API map (1.3), overlay/action registration sequence, single-overlay + internal-state-machine pattern, 10 binding frontend constraints (researcher card t_5cc15f2e).
+- `docs/KIOSK_UX_FINDINGS.md` — NHTSA 2s-glance / Google 32dp-76dp-4.5:1 / WCAG 2.2 anchored design numbers; Okabe-Ito colorblind-safe severity palette; per-mode scan checklist; S0–S8 screen flow for all 9 v1 features; two-screen clear-codes safety flow; reconnect resilience patterns (t_7375eac8).
+- `docs/DIESEL_READINESS_FINDINGS.md` — TDI monitor table anchored on VW TSB 01-15-18 + CA BAR rules; reset/re-completion timelines; top-5 TDI not-ready causes; paste-ready British-English copy blocks; 4-input verdict arithmetic (t_19bee37d).
+- `fixtures/readiness_m0101_m0141.jsonl` + `readiness_m0101_decoded.json` — live readiness capture: MIL off, diesel engine-type bit set, boost + exhaust-gas-sensor + EGR available & complete, two-group wall (0101 + 0141) verified.
+- `tools/patch_charts_capture_m02.py` equivalent for readiness (`patch_rd.py` archived as part of the capture toolchain).
+- `docs/DECODED_FIXTURES.md` — session-2 decode: final 6-mode fixtures, M02 negative, 0140 support-map completion, readiness decode; ELM-wedge claim formally retracted.
+
+### Research phase verdict
+- 4 researcher cards complete (feature survey, UI API inventory, kiosk UX, diesel readiness); all findings committed and QA-gated (load-bearing claims verified live: Wal33D repo, vPIC, VW TSB PDF, CA BAR, Api.proto, overlays.json, NHTSA Federal Register, Google Design for Driving).
+- Ready for Phase 2: backend specialist card first (constraint block = docs/), then frontend.
