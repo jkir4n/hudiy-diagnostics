@@ -1,6 +1,8 @@
-# Hudiy Diagnostics — Kiosk UX Findings (frontend design input)
+﻿> HARD RULE (V1_SPEC #6): all findings below are binding across ALL input modalities - touchscreen, keyboard navigation keys (arrows/Enter/ESC with visible focus ring), and gestures. Feature parity across all three is an acceptance gate for the frontend card.
 
-Task t_7375eac8. Angle is LAYOUT/UX only — the feature surface is already fixed
+# Hudiy Diagnostics â€” Kiosk UX Findings (frontend design input)
+
+Task t_7375eac8. Angle is LAYOUT/UX only â€” the feature surface is already fixed
 by V1_SPEC.md (9 features) and FEATURE_SURVEY_FINDINGS.md (competitor matrix).
 This note answers the 6 UX questions with cited sources, then proposes a
 concrete screen flow for exactly those 9 v1 features. Plain language, no code.
@@ -59,7 +61,7 @@ focus, and video only when parked.[5]
 
 The accessibility floor under all of this is WCAG 2.2: color must never be the
 only means of conveying information (Level A), interactive targets must be at
-least 24x24 CSS pixels (the AA minimum — our kiosk target is far larger, see
+least 24x24 CSS pixels (the AA minimum â€” our kiosk target is far larger, see
 below), and non-text indicators such as status icons need 3:1 contrast against
 adjacent colors.[6]
 
@@ -68,7 +70,7 @@ size or larger with 120 characters as the per-block ceiling; every status
 readable in one 2-second glance (one verdict line per screen, details one tap
 deeper); all primary actions at car-grade size (76dp-class, never below the
 24px WCAG floor); dark theme as the default night-safe polarity with 4.5:1
-text contrast; and a strict parked-vs-driving split — full detail while
+text contrast; and a strict parked-vs-driving split â€” full detail while
 parked, but any screen that could be open while idling in traffic must keep
 the verdict line glance-sized and never demand reading a paragraph.
 
@@ -80,7 +82,7 @@ Codes view is the clearest example: left nav (Summary / Trouble Codes /
 Diagnostics / Monitoring / Extras), a header banner with an ECU selector
 dropdown, tabs for Confirmed / Pending / Permanent / Freeze Frame / DTC
 Database, a four-column code table (Code, System, Manufacturer, Description),
-and bottom buttons Clear the DTCs / Export / Refresh — the tutorial's Windows
+and bottom buttons Clear the DTCs / Export / Refresh â€” the tutorial's Windows
 screenshot shows a finished list with no scanning indicator at all.[9] Its
 readiness screen follows the same static pattern: a monitor list with two
 status columns (since-DTCs-cleared and this-driving-cycle) and Refresh as the
@@ -89,8 +91,8 @@ words: show and reset DTCs, freeze frame as "sensors state when DTC is saved",
 Mode 06 self-test results, emission readiness, and all sensors on one
 screen.[15] Torque Pro frames diagnostics as "show and reset a DTC like a
 scantool" inside a widget dashboard, with CSV/KML logging for later
-analysis.[16] ReDrive states its philosophy outright — UI/UX first, no visual
-clutter, only the data needed right now — with DTC scanning plus detailed
+analysis.[16] ReDrive states its philosophy outright â€” UI/UX first, no visual
+clutter, only the data needed right now â€” with DTC scanning plus detailed
 decoding and automatic connection recovery as the headline behaviors.[19]
 OBD Auto Doctor notes a full check takes under 5 minutes, which sets user
 expectations for scan duration.[13]
@@ -103,10 +105,10 @@ can understand. Stream partial results into their cards as each mode completes
 with a per-section timestamp, so a slow Mode 06 never blocks reading the DTCs.
 Follow the platform rule: anything over 2 seconds shows a spinner or
 equivalent state change.[3] Error and retry states get three fixed wordings:
-adapter-level failure ("Adapter not found — check the ELM327 connection",
-with Retry), ECU silence ("ECU did not answer — ignition may be off", with
-Retry and Back), and the stale-handle case ("ECU reconnecting…", auto-retry,
-Back always available — never a dead end; see section 6). Cancel must be
+adapter-level failure ("Adapter not found â€” check the ELM327 connection",
+with Retry), ECU silence ("ECU did not answer â€” ignition may be off", with
+Retry and Back), and the stale-handle case ("ECU reconnectingâ€¦", auto-retry,
+Back always available â€” never a dead end; see section 6). Cancel must be
 present on every scan step and must land back on idle with whatever partials
 were already collected.
 
@@ -116,8 +118,8 @@ The two proven layouts are tabs and card walls, and the best apps use each
 where it fits. OBD Auto Doctor uses tabs for the four DTC flavors plus freeze
 frame and the DTC database, and a card-wall-style monitor list for readiness
 with Complete (green check), Incomplete (red/orange exclamation) and Disabled
-(gray) states in two groups — status since DTCs cleared and status this drive
-cycle — including an EPA-allowance note on how many incomplete monitors an
+(gray) states in two groups â€” status since DTCs cleared and status this drive
+cycle â€” including an EPA-allowance note on how many incomplete monitors an
 inspection tolerates.[10] Our V1_SPEC already mandates the card wall for
 readiness with green/red/gray chips plus one verdict line, which matches this
 pattern exactly. For DTCs, keep OBDAD's tab split (Confirmed / Pending /
@@ -141,7 +143,7 @@ sky blue #56B4E9, bluish green #009E73, yellow #F0E442, blue #0072B2,
 vermillion #D55E00, reddish purple #CC79A7.[7] Practical mapping for our three
 readiness/severity states: vermillion + warning triangle for bad, sky blue or
 bluish green + check for good, gray + minus/pause glyph for disabled or
-unknown — never color alone, always an icon and a word, which satisfies both
+unknown â€” never color alone, always an icon and a word, which satisfies both
 the palette guidance and the WCAG color-use rule.[6][7] Vary shape as well as
 hue for any multi-category display so plots and chips survive grayscale too.[8]
 
@@ -179,13 +181,13 @@ says OBD-tool reset is how professional mechanics do it.[9] OBDeleven adds one
 refinement worth copying: distinguish critical from non-critical codes, with
 single-tap clear only for the non-critical kind (per FEATURE_SURVEY_FINDINGS
 section 1). Permanent Mode 0A codes get an explicit honesty note that no tool
-can clear them — only the ECU clears them after its own drive cycles (per
+can clear them â€” only the ECU clears them after its own drive cycles (per
 FEATURE_SURVEY_FINDINGS section 5).
 
 Recommended two-screen flow for our Mode 04: screen one shows the consequence
 list (freeze frame lost, readiness reset, smog fail until drive cycle,
 possible rough running) plus a fix-first checkbox the user must tick; screen
-two confirms the result and lands in a "monitors incomplete — drive cycle
+two confirms the result and lands in a "monitors incomplete â€” drive cycle
 needed" follow-up state rather than a bare success toast. Keep Back available
 on screen one and require the checkbox before the destructive button arms.
 
@@ -212,7 +214,7 @@ which timed out). Offer text and CSV from one Export screen with car-grade
 touch targets.[2] Filenames should carry date plus VIN suffix so repeat visits
 do not overwrite each other. For the kiosk constraint (no phone in hand, no
 cloud account), add a QR code encoding the report payload or a local retrieval
-pointer on the Export screen — none of the surveyed offline tools do this, so
+pointer on the Export screen â€” none of the surveyed offline tools do this, so
 it is our own recommendation, not a copied pattern: it gives the
 mechanic-shareable handoff without accounts, pairing, or typing long codes.
 
@@ -220,11 +222,11 @@ mechanic-shareable handoff without accounts, pairing, or typing long codes.
 
 Three precedents combine here. ReDrive ships automatic connection recovery
 across Bluetooth, Wi-Fi and USB as a headline feature.[19] OBD Auto Doctor
-treats connection as step zero of diagnostics — right dongle, right software,
-platform-specific connect procedure — before any code is read.[9][13] Our own
+treats connection as step zero of diagnostics â€” right dongle, right software,
+platform-specific connect procedure â€” before any code is read.[9][13] Our own
 transport reality is harsher: after a car power-cycle the ELM link can report
 connected while every query is silently dropped, detectable only by OBD age
-climbing, with app restart as the validated recovery — and V1_SPEC rule 5
+climbing, with app restart as the validated recovery â€” and V1_SPEC rule 5
 requires the UI to show "ECU reconnecting" in that window, never a hang.
 
 The UI pattern that satisfies all three: a persistent connection pill in the
@@ -232,11 +234,11 @@ top chrome (BT state dot + ECU state word: Connected / Scanning /
 Reconnecting / Not found) so state is always glanceable, following the
 real-time malfunction-display principle.[3] On stale-handle detection, freeze
 the scan checklist in place, banner the reconnecting state with auto-retry,
-keep Back and Cancel live, and never discard already-collected partials —
+keep Back and Cancel live, and never discard already-collected partials â€”
 sequences must be interruptible and resumable, never restart-or-nothing.[3]
 Keep the last good results cached and viewable behind the banner so the user
 is never stranded on a spinner. Copy discipline: say what happened, say what
-the app is doing, say what the user can do ("ECU stopped answering — retrying
+the app is doing, say what the user can do ("ECU stopped answering â€” retrying
 (2/3). Check ignition is ON. [Retry now] [Back to results]"). Adapter-missing
 at launch gets its own idle-state card, not an error dialog, with the single
 Retry action at car-grade size.[2]
@@ -285,7 +287,7 @@ silently inside the scan):
   section 5, Export .txt / Export .csv buttons, QR handoff, filename showing
   date + VIN suffix.
 
-Freeze frame (feature 3) has no card on this ECU — its S3b slot shows the
+Freeze frame (feature 3) has no card on this ECU â€” its S3b slot shows the
 not-supported notice and the report carries the 0145/0149 substitute values,
 exactly as V1_SPEC's feature table directs. Every screen keeps Back alive,
 every destructive step keeps its consequences on the same screen as its
