@@ -1,0 +1,34 @@
+{
+  "capture": {
+    "method": "charts-copy capture thread, req 930010-930041, fresh Hudiy device",
+    "date": "2026-09-10 ~01:42 IST",
+    "cycles": 3,
+    "samples": 6,
+    "raw_file": "fixtures/readiness_m0101_m0141.jsonl",
+    "note": "0101 and 0141 returned IDENTICAL bytes (4101000EA800 / 4141000EA800) \u2014 since-clear == this-drive-cycle, expected with no recent code clear"
+  },
+  "fixtures": {
+    "0101_readiness_since_clear": {
+      "raw": "4101000EA800",
+      "consistent": "3/3 cycles",
+      "decode": {
+        "A": "0x00 => MIL off, 0 stored emissions DTCs",
+        "B": "0x0E => B3=1 CONFIRMS DIESEL per J1979; common tests: misfire unavailable(complete), fuel system available+complete, comprehensive components available+complete",
+        "C": "0xA8 (10101000b) => diesel-specific availability: boost pressure + exhaust gas sensor + EGR/VVT available; NMHC/NOx-SCR/PM-filter bits 0",
+        "D": "0x00 => all available diesel monitors COMPLETE (completeness bit 0 = complete)"
+      },
+      "significance": "readiness wall data model verified live: the app must read B3 for diesel-vs-petrol naming, C for availability, D for completeness; 'supported but incomplete' is the only state that counts against a verdict"
+    },
+    "0141_readiness_this_cycle": {
+      "raw": "4141000EA800",
+      "consistent": "3/3 cycles",
+      "significance": "0141 supported (per 0140 bitmap) => two-group readiness wall (since-clear + this-cycle) is implementable on this car"
+    }
+  },
+  "app_rules": [
+    "Diesel monitor naming per EPA/J1979 2010+ diesel map; B3 selects the naming table at runtime (universal rule)",
+    "Availability bit (C) and completeness bit (D) are separate; completeness 0 = complete, 1 = incomplete",
+    "Not-available monitors (NMHC/NOx/PM on this car via this ECU) render neutral 'not available', never counted as incomplete",
+    "0101 (since-clear) + 0141 (this-cycle) => both readiness groups live"
+  ]
+}
