@@ -1,0 +1,28 @@
+{
+  "capture": {
+    "method": "charts-copy capture thread (served-client route), req 920010-920065",
+    "date": "2026-09-10 ~01:00 IST",
+    "cycles": 6,
+    "samples": 34,
+    "raw_file": "fixtures/m02_freezeframe_probe.jsonl"
+  },
+  "fixtures": {
+    "0140_pid_support_41_60": {
+      "raw": "4140CCD20000",
+      "consistent": "6/6 cycles",
+      "decode": "A=0xCC B=0xD2 => PIDs supported: 0141 (monitor status cyl1), 0142 (monitor status cyl2), 0145 (time since DTC cleared), 0146 (time with MIL on), 0149 (time since codes cleared, NO DATA allowed), 014A (max MAF), 014C (throttle pos B), 014F (max values: equiv ratio/sensor volt/pressure)",
+      "significance": "completes the full support map: car supports 0100-0133 (known) + this 41-60 set; 0160/0180/01A0 EMPTY = nothing beyond 0x5F"
+    },
+    "0200_freezeframe_support": {
+      "verdict": "NOT SUPPORTED",
+      "evidence": "6/6 cycles empty (NO DATA) => this ECU does not expose Mode 02 freeze-frame support bitmap",
+      "app_rule": "freeze-frame UI must treat Mode 02 as unsupported and hide/disable the freeze-frame card (with 'not supported by this ECU' note), consistent with 0A handling"
+    },
+    "0202_freezeframe_dtc": {
+      "verdict": "EMPTY / no stored freeze frame",
+      "evidence": "6/6 cycles empty",
+      "app_rule": "when Mode 02 returns empty: 'no freeze frame stored'; when 0200 unsupported: hide feature"
+    }
+  },
+  "v1_impact": "Research v1 item 'freeze frame per DTC' is now CAPPED: on this car the feature will show not-supported (correct universal behavior - it keys off 0200 support bitmap at runtime, not hardcoded). Report text will include time-since-DTC-cleared PIDs (0145/0149) instead, which ARE supported and serve the same 'when did this happen' user need."
+}
