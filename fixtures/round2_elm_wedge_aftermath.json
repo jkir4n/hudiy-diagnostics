@@ -1,0 +1,26 @@
+{
+ "010C": {
+  "desc": "sanity RPM",
+  "answered": false,
+  "raw": null
+ },
+ "0A": {
+  "desc": "permanent DTCs",
+  "answered": false,
+  "raw": null
+ },
+ "0104": {
+  "desc": "engine load",
+  "answered": false,
+  "raw": null
+ },
+ "0133": {
+  "desc": "baro pressure",
+  "answered": false,
+  "raw": null
+ },
+ "0146": {
+  "desc": "ambient air temp",
+  "error": "[Errno 32] Broken pipe"
+ }
+}
