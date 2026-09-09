@@ -1,6 +1,6 @@
 # Architecture Notes — Hudiy Diagnostics (Phase 1 findings)
 
-Status: **research-only**. No backend/frontend code exists yet (per plan: repo + data first).
+Status: **research COMPLETE for architecture decisions** (updated 2026-09-09 late night after live experiments). No backend/frontend code exists yet (per plan: repo + data first).
 
 ## What this app must be
 A Hudiy menu-launched car diagnostics app:
@@ -11,34 +11,40 @@ A Hudiy menu-launched car diagnostics app:
 ## Environment facts (proven on the reference head unit, 09 Sep)
 - Hudiy TCP API: `127.0.0.1:44405`, protobuf `common/Api_pb2.py` (ships with hudiy-obd-charts deployment; identical lib available on the Pi).
 - OBD path: Hudiy ⇄ ELM327 BT (RFCOMM) ⇄ ISO 15765-4 CAN 11-bit.
-- charts.py (race dash) pattern: `Client` + `on_hello_response` → `SetStatusSubscriptions(OBD)` → `QueryObdDeviceRequest` / `on_query_obd_device_response`, request_code matching.
+- charts.py (race dash) pattern: `HardenedClient("Chart")` + `on_hello_response` → `SetStatusSubscriptions(OBD)` → `QueryObdDeviceRequest` / `on_query_obd_device_response`, request_code matching.
 - Hudiy returns `NO DATA` as **empty string**.
-- Menu entry file: `~/.hudiy/...applications_menu.json` (Race Dash entry at line 226: Material icon `speed`, Hudiy category, action `show_race_dash`).
-- Race dash services are **user units**: `hudiy-obd-charts`, `race-dash-screensaver`. Hudiy app itself runs via labwc autostart (`~/.hudiy/share/hudiy_run.sh`); `hudiy.service` unit is a stub whose ExecCondition (multi-user.target) is unmet under graphical.target — `inactive` is its NORMAL state.
-- No journald on the Pi; Hudiy logs at `~/.hudiy/log/hudiy.N.log` (rotated; find newest by mtime).
+- Menu entry file: `applications_menu.json` (Race Dash entry pattern: Material icon, Hudiy category, action string).
+- Race dash services are **user units**: `hudiy-obd-charts`, `race-dash-screensaver` (toggle unit `Wants=hudiy-obd-charts` — disabling charts alone does NOT prevent it starting; disable both). Hudiy app itself runs via labwc autostart (`~/.hudiy/share/hudiy_run.sh` → `hudiy_startup.sh`); `hudiy.service` unit is a stub whose ExecCondition (multi-user.target) is unmet under graphical.target — `inactive` is its NORMAL state.
+- No journald on the Pi; Hudiy logs at `~/.hudiy/log/hudiy.N.log` (rotated; find newest by mtime). `ObdManager` lines there are the ground truth for ELM device state (`opening device failed. Retrying...` → `device opened.`) — the ELM BT device can take **minutes** to open after boot (39 min worst observed).
+- **Manual Hudiy relaunch recipe** (if the app is ever killed outside labwc): needs session env — `XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus LD_LIBRARY_PATH=$HOME/.hudiy/share QT_QPA_PLATFORM=eglfs` + `nohup hudiy_startup.sh &`. Without `LD_LIBRARY_PATH` it fails on `libhuinput.so`.
 
-## HARD CONSTRAINT — single OBD client slot
-Post-(re)boot, Hudiy routes OBD query responses **only to its first-boot primed OBD client** (currently charts.py). Verified 09 Sep across 5 probe designs:
-- Second client: queries unanswered at 12s and 25s timeouts; after ~7 unanswered requests Hudiy **kills the connection** (broken pipe).
-- Killing charts.py and waiting 10–20s does NOT release the slot.
-- Round-1 probing (which DID get answers) ran while charts.py had never connected since Hudiy boot.
-Consequence: the diagnostics app **cannot blindly open its own OBD client** on any Hudiy instance where another app (race dash or similar) already owns the slot.
+## DEFINITIVE CONSTRAINT — Hudiy serves OBD to exactly one process (verified to exhaustion)
+Night of 09 Sep, across 8+ probe designs (12s/15s/20s/25s timeouts, subscription/no-subscription, connect-before-open/connect-after-open, charts-running/charts-stopped/charts-disabled-at-boot/charts-never-connected, fresh Hudiy relaunch with probe as first-ever client):
+- The probe client is byte-identical to charts.py's client (`HardenedClient("Chart")`, same protobuf shape, same OBD subscription). **It still receives nothing** — not even `ObdManager` cancel logs; a silent black hole.
+- In the same conditions charts.py gets instant answers (OBD age 0.11s, all 7 PIDs).
+- The discriminator is internal to Hudiy (likely SO_PEERCRED-style socket credential check or a whitelist of the served process). It CANNOT be faked from a second process.
+- Earlier "first-querier wins the slot" and "subscription required" theories were DISPROVEN by these experiments.
+- Additional hazard (secondary, real): long multi-frame Mode 09 CALID (`0904`) reads can wedge the ELM327 irrecoverably (reboot only). Single-flight, ≤15s timeout, one retry max.
+- `NO DATA` arrives as **empty string** through Hudiy.
+- Multi-frame responses concatenate `0:…1:…2:…` with variable CF lengths — parse sequentially (frame-count prefix + slice), never regex.
 
-### Design options for Phase 2 (decide with user)
-1. **Proxy through the owning client** — diagnostics app consumes the race dash charts API (`:44411 /stream`, `/history`) for live PIDs and adds a diagnostics backend that forwards Mode 03/06/07/0A requests through a shared queue inside charts.py's process. Pro: works today, no Hudiy behavior assumptions. Con: couples apps.
-2. **Arbiter pattern** — a small shared "OBD arbiter" service owns the Hudiy connection; both apps talk to the arbiter. Pro: clean universality. Con: one more service on every install.
-3. **Menu-launched exclusivity** — diagnostics app connects on menu-open and politely asks user to quit race dash (or auto-pauses its poller via its HTTP toggle on :44413). Pro: simplest. Con: can't run simultaneously.
-4. **Probe Hudiy for multi-client mode** — maybe a Hudiy setting/flag allows concurrent OBD query clients; needs a Hudiy restart experiment with probe-first ordering (charts never connected). Not yet tested (car went offline).
+### Consequence for Phase 2 (design decision)
+The diagnostics app **cannot open its own OBD client** on any Hudiy instance where a race-dash-like client is served — and even alone, a foreign process is not served. Two viable architectures:
 
-## ELM327 wedge hazard (Phase 2 safety rules)
-- Mode 09 CALID (`0904`) multi-frame read wedged the adapter irrecoverably (reboot only). CVN (`0906`) unproven.
-- Rules for the app: long multi-frame reads = single-flight, timeout-guarded (≤15s), one retry max, never issued while live-polling is active, and telemetry must keep flowing even if a diagnostics query hangs (diagnostics lane must not block the dash lane).
+1. **Proxy lane (RECOMMENDED)** — add a controlled diagnostics lane inside the race-dash charts service (or a sibling service in its process group sharing its connection): diagnostics queries ride the already-served client. On installs without race-dash, the diagnostics app runs its own equivalent of charts' connection pattern (same code path) and is then the served client.
+   - Pro: works on the current install immediately; one more endpoint, not a new service; the missing fixtures (below) get captured through this lane naturally.
+   - Con: couples the diagnostics feature to the charts service's lifecycle.
+2. **Full-replacement mode** — diagnostics app implements charts' connection pattern as the sole OBD client; race-dash not installed / paused.
+   - Pro: clean universality. Con: not coexistent on the same install.
 
-## Missing fixtures (to capture when car is next powered + slot ordering solved)
-- Clean Mode 0A (permanent DTC) answer
-- 0104 engine load, 0133 baro (both supported, never answered)
-- Clean 0685 (boost OBDMID) re-read
-- 0904 CALID / 0906 CVN (guarded)
+Universality note: option 1 degrades gracefully — if race-dash is absent, the diagnostics lane code runs standalone; if present, it proxies. Both from the same codebase.
+
+## Missing fixtures (now build-time items, not research gaps)
+Because only the served charts process can query OBD, these 5 captures require the proxy lane (or temporary charts-process injection):
+- Clean Mode `0A` (permanent DTCs) answer
+- `0104` engine load, `0133` barometric pressure (both supported, never answered)
+- Clean `0685` boost OBDMID re-read
+- `0904` CALID / `0906` CVN (guarded — wedge hazard)
 
 ## Data on hand
-See `docs/DECODED_FIXTURES.md` + `fixtures/round1_full_capture.json` (27/28 queries answered).
+See `docs/DECODED_FIXTURES.md` + `fixtures/round1_full_capture.json` (27/28 queries answered) + `docs/OBD2_DIAGNOSTICS_RESEARCH.md` (sourced protocol research).
