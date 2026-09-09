@@ -1,0 +1,46 @@
+{
+  "capture": {
+    "method": "charts.py copy + injected capture thread (served-client route), req codes 910010-910065",
+    "date": "2026-09-10 ~00:15 IST",
+    "samples": 35,
+    "cycles": 6,
+    "raw_file": "fixtures/capture_final_fixtures.jsonl"
+  },
+  "fixtures": {
+    "0A_permanent_DTCs": {
+      "verdict": "NOT SUPPORTED by this ECU",
+      "evidence": [
+        "0A absent from 0100/4100 support bitmap (round-1 PIDs 01-20 list has no 0A)",
+        "6/6 cycles: no valid 5A response; ELM returns stale-buffer echoes (4111E9, 4700 in round-1)"
+      ],
+      "app_rule": "treat Mode 0A as unsupported unless 4100 bitmap bit 0x20 set; show 'No permanent DTCs supported'"
+    },
+    "0104_engine_load": {
+      "raw": "410400",
+      "value": "0% (idle, repeated 5x)",
+      "clean": true
+    },
+    "0133_barometric": {
+      "raw": "413365",
+      "value": "101 kPa (repeated 6x)",
+      "clean": true
+    },
+    "0685_boost_OBDMID": {
+      "raw": "0:4685C1FC018C1:80000FA085C2FC2:FA4DF4487FFFAA",
+      "decode": "OBDMID 0x46=boost pressure control status; multi-frame 3-CTF; consistent 6/6; group-2 ambiguity from round-1 RESOLVED: response is one concatenated frame-set parsed by 0:/1:/2: prefixes",
+      "clean": true
+    },
+    "0904_CALID": {
+      "raw_frames": "0:49040130305A 1:3030303030305A 2:202030303030AA",
+      "decoded_ascii": "01 30 30 5A 30 30 30 30 30 30 5A 20 20 30 30 30 30 = '00Z000000Z  0000'... strip AA: CAL-ID string '00Z000000Z  0000'",
+      "note": "multi-frame 0904 WORKS when the client is the served one - the round-2/3 wedge was the starved-client artifact, NOT an ELM fragility",
+      "clean": true
+    },
+    "0906_CVN": {
+      "raw": "490601A5A5A5A5",
+      "decoded": "CVN = 0xA5A5A5A5 (single frame, 4 bytes)",
+      "clean": true
+    }
+  },
+  "wedge_theory_update": "0904/0906 do NOT wedge the ELM. The round-2/3 'wedge' was ObdManager starving the unserved client; multi-frame reads are safe through the served client."
+}
