@@ -75,7 +75,10 @@ def _default_report_dir() -> Path:
 MODE_AUTO = "auto"
 MODE_PROXY = "proxy"
 MODE_STANDALONE = "standalone"
-MODES = (MODE_AUTO, MODE_PROXY, MODE_STANDALONE)
+#: Replay: answers come from a recorded fixture, never from a car. Used by the
+#: test suite and by frontend development with no vehicle attached.
+MODE_REPLAY = "replay"
+MODES = (MODE_AUTO, MODE_PROXY, MODE_STANDALONE, MODE_REPLAY)
 
 #: Readiness rule presets. The inspection arithmetic is a *local* rule, not a
 #: technical fact (docs/DIESEL_READINESS_FINDINGS.md section 2), so it lives in
@@ -166,6 +169,11 @@ class Config:
     #: Where exported reports are written when a client asks for a file.
     report_dir: Path = field(
         default_factory=lambda: Path(_env_str("DIAG_REPORT_DIR", str(_default_report_dir())))
+    )
+    #: Fixture used by replay mode: ``{command: {"raw": [...]}}`` (the Phase 1
+    #: capture format, see fixtures/round1_full_capture.json).
+    replay_fixture: str = field(
+        default_factory=lambda: _env_str("DIAG_REPLAY_FIXTURE", "")
     )
 
     #: Per-query timeout. V1_SPEC caps it at 15 s.
