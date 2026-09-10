@@ -326,7 +326,15 @@ def _ascii_records(payload: bytes) -> dict:
     nodi = body[0] if body and body[0] <= 0x10 else None
     content = body[1:] if nodi is not None else body
     stripped = framing.strip_tail_padding(content)
-    text = framing.bytes_to_ascii(stripped)
+    # Interior pad bytes (NUL, 0xAA, 0xFF) appear mid-string when the ECU pads
+    # a frame boundary (e.g. 090A "ECM\x00-EngineControl" on the Polo TDI).
+    # Ground truth fixtures (DECODED_FIXTURES.md) treat these as absent, not
+    # as '.' placeholders - drop them from the printable text only.
+    cleaned = bytes(
+        b for b in stripped
+        if b not in (0x00, 0xAA, 0xFF)
+    )
+    text = framing.bytes_to_ascii(cleaned)
     return {
         "nodi": nodi,
         "ascii": text,

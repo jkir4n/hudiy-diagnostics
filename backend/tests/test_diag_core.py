@@ -95,7 +95,7 @@ class DecoderTests(unittest.TestCase):
     def test_calibration_id(self):
         decoded = protocol.decode_raw_items("090A", [RAW_CALID])
         info = decoders.vehicle_info(decoded)
-        self.assertEqual(info["value"], "ECM.-EngineControl")
+        self.assertEqual(info["value"], "ECM-EngineControl")
 
     def test_cvn(self):
         decoded = protocol.decode_raw_items("0904", [RAW_CVN])
