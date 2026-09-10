@@ -138,7 +138,7 @@ both halves of the product:
 ./backend/deploy/install.sh --uninstall  # stop + remove the unit
 ```
 
-The installer copies `backend/` + `fixtures/` into
+The installer copies `backend/` + `frontend/` + `fixtures/` into
 `~/.local/share/hudiy-diagnostics`, installs the **user** unit
 `hudiy-diagnostics.service` (same pattern as the race-dash units: no root, no
 autolaunch - nothing starts it until the app is opened from the Hudiy menu),
@@ -146,6 +146,26 @@ enables it, then polls `/health` and prints the result. Per-instance settings
 live in `~/.config/hudiy-diagnostics/env`; the installer creates that file only
 if it is missing. Re-run it after every `git pull` - it is idempotent and
 replaces the copied trees.
+
+### Hudiy registration (menu entry + overlay)
+
+Hudiy reads `overlays.json` and `applications_menu.json` **once at start**, so
+registration is a two-step operation and the second step is a restart:
+
+1. The installer merges the fragments under `frontend/hudiy/` into the live
+   config, but only if the config layout is actually present
+   (`~/.hudiy/share/config`; override with `DIAG_HUDIY_CONFIG_DIR`). On an
+   install without that directory it prints the command to run by hand and
+   changes nothing. The merge **never overwrites** the file: it inserts the
+   `diag` overlay and the Diagnostics menu item, leaves every other entry
+   alone, and writes a timestamped backup first
+   (`applications_menu.json.bak-YYYYmmdd-HHMMSS`). Re-running is a no-op
+   (`already present`).
+2. **Restart Hudiy** for the new menu entry to appear - the files are loaded at
+   start, so a running Hudiy keeps serving its old menu. Back up the config
+   (the merge already did) and restart the process; never live-patch or
+   hot-reload the config, and never write into `~/.hudiy/share/config` outside
+   this step.
 
 Ports: race-dash occupies 44411 (charts SSE), 44412 (OBD bridge) and 44413
 (toggle), so diagnostics defaults to **44414**.

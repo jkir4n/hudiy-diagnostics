@@ -68,3 +68,18 @@ All notable changes. Format: date — phase — what.
 - `scan.py` reported link-lifetime totals as per-scan traffic. `scan.queries/timeouts/retries/failures` are now deltas measured across the scan — on a long-lived service the old numbers grew with every scan and read as if one scan had sent them.
 - `scan.py` called `decoders.summarize_codes()` with the flat stored/pending/permanent code lists instead of the decoded `dtc_list()` mappings it buckets on; and with no fault phase run it no longer fabricates a "0 codes, clear" summary (it passes `None`, which degrades the verdict to unknown rather than falsely reporting the car as ready).
 
+## 2026-09-10 — Phase 2b (frontend): the diag overlay page S0–S8
+
+### Added
+- `frontend/diag.html` + `frontend/diag.css` — the single overlay page: fixed 800×480, nine screens (S0 home, S1 scanning, S2 health summary, S3 fault-code list, S4 code detail, S5 readiness wall, S6 Mode 06 tests, S7 identity, S8 report/settings), severity colours restricted to the Okabe-Ito set, one meaning per colour.
+- `frontend/diag.js` — the state machine and lane client: `/health` on a 5 s poll (paused while the page is hidden or detached), user-triggered `/scan` (full or `?sections=` quick), lazy `/dtc` lookups, `/report` text/csv/json into a `<pre>`, VIN decode. Rule-6 input parity: the `hudiy={}` bridge (`onMoveToNext/PreviousControl`, `onTriggered`, `onGoBack`/`onGoLeft`/`onGoRight`, `inputFocus`/`activated`), a DOM keydown fallback for development, tap targets ≥48 px, swipe-right = BACK, swipe-left = tab, vertical swipe = list scroll. `?bridge=dom|bridge` forces either path (`window.__DIAG_BRIDGE_MODE`); no autolaunch, nothing OBD-facing leaves the backend.
+- `frontend/hudiy/` — install-time Hudiy templates (`overlays.json` identifier `diag`, `applications_menu.json` Diagnostics entry, Race Dash pattern) plus `merge_config.py`, which MERGES the fragments into a live config (never overwrites), backs the file up first and is a no-op on re-run. `API_BRIDGE`-free: registration is file-config only.
+- `GET /app/*` static route in `backend/server.py` (read-only, stdlib only) and 20 new endpoint tests; 61/61 green.
+- `frontend/README.md` — screens, the rule-6 parity table (every screen × touch/keys/gestures), colour rules, the readiness-verdict honesty rule and the bench-question (not code) gaps.
+
+### Fixed
+- S1's Cancel button was wired with inverted enablement (`!S.busy` passed as the `enabled` argument), so it was disabled for exactly as long as a scan was running — the one state where it is the only way out of the screen. It now enables while a scan is in flight, and the cancel path was verified in the browser (abort fires once, the page returns to S2, or S0 with no cached report, and says the backend read finishes on its own).
+- S1's section chips read as a dead stepper; they are a legend of what the scan reads, so they are now labelled, and the README states why the progress bar is an indeterminate sweep (the lane answers `/scan` as one request, so no in-flight section signal exists — the page does not invent a percentage).
+- `renderTiles()` carried a dead `host` variable. `frontend/README.md` claimed S0 shows the four tiles (they live on S2 only) and described S1 as "section-by-section progress".
+- `backend/README.md` said the installer copies `backend/` + `fixtures/` only, and never documented the Hudiy registration step or the controlled-restart requirement; both are now documented (merge-not-overwrite, timestamped backup, no live-patching, restart to pick up the menu entry).
+
