@@ -346,9 +346,10 @@ the charts backend's data, do not open a parallel ELM327 path).
    "diag_*"), check RegisterActionResponse.result, fail loudly on false.
 5. Coexist with Chart + RaceDashScreensaver + crowpanel bridge: distinct
    hello `name`, own subscriptions only (OBD sub ONLY if you query OBD
-   yourself — prefer reusing the charts backend instead), own Flask port
- (44411 charts / 44413 toggle taken, 44412 used by the upstream idle
- example; pick another 127.0.0.1 port).
+   yourself — the diagnostics bridge lane already rides the charts app's
+   own `POST /diag/obd` route), own Flask port (44411 charts+bridge /
+   44413 toggle taken, 44412 upstream idle example; pick another
+   127.0.0.1 port — diagnostics defaults to 44414).
 6. Subscribe CURRENT_MENU_ACTION and hide/stand-down on any change (with
    ~30s dedup): the knob/remote ALWAYS wins; a sticky overlay that traps
    the user is the failure mode the toggle code explicitly guards against.

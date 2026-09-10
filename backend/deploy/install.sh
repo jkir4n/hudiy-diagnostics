@@ -44,7 +44,7 @@ need_systemctl_user() {
 }
 
 case "$PORT" in
-  44411|44412|44413) echo "port $PORT is taken by race-dash (charts/bridge/toggle); use 44414+" >&2; exit 2 ;;
+  44411|44412|44413) echo "port $PORT is reserved by race-dash (44411 charts + /diag/obd bridge route, 44412 upstream idle example, 44413 toggle); use 44414+" >&2; exit 2 ;;
 esac
 if [ "$UNINSTALL" = "0" ] && ! command -v python3 >/dev/null; then
   echo "python3 not found on PATH" >&2; exit 1
@@ -93,7 +93,9 @@ DIAG_MODE=standalone
 # When charts/race-dash owns the OBD slot, point the bridge at it instead of
 # opening the adapter yourself (see docs/ARCHITECTURE_NOTES.md, single client).
 #DIAG_MODE=bridge
-#DIAG_CHARTS_BRIDGE_URL=http://127.0.0.1:44412/diag/obd
+# Bridge route is served by the charts app itself (charts.py POST /diag/obd),
+# so it rides the existing 44411 listener - there is no bridge port to open.
+#DIAG_CHARTS_BRIDGE_URL=http://127.0.0.1:44411/diag/obd
 #DIAG_HTTP_PORT=44414
 #DIAG_HTTP_HOST=127.0.0.1
 ENVEOF

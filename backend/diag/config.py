@@ -153,9 +153,11 @@ class Config:
     #: process is the ONE process Hudiy serves OBD to (ARCHITECTURE_NOTES.md,
     #: DEF CONSTRAINT), so our queries travel through this URL instead of
     #: opening a second Hudiy connection that would be silently starved.
+    #: The charts app serves this route on its own existing listener (charts.py
+    #: `POST /diag/obd`), so there is no separate bridge port to run or harden.
     charts_bridge_url: str = field(
         default_factory=lambda: _env_str(
-            "DIAG_CHARTS_BRIDGE_URL", "http://127.0.0.1:44412/diag/obd"
+            "DIAG_CHARTS_BRIDGE_URL", "http://127.0.0.1:44411/diag/obd"
         )
     )
     #: Optional shared secret for the bridge. Both ends are loopback-only, so

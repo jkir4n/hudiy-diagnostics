@@ -101,7 +101,7 @@ car or per install. The ones worth knowing:
 | `DIAG_MODE` | `auto` | `auto` \| `bridge` \| `standalone` \| `replay` |
 | `DIAG_HTTP_HOST` / `DIAG_HTTP_PORT` | `127.0.0.1` / `44414` | Bind address. Loopback by default; there is no authentication, so widening the bind publishes vehicle data to the network. |
 | `HUDIY_HOST` / `HUDIY_TCP_PORT` | `127.0.0.1` / `44405` | Hudiy API (standalone mode) |
-| `DIAG_CHARTS_BRIDGE_URL` | `http://127.0.0.1:44412/diag/obd` | race-dash OBD bridge (bridge mode) |
+| `DIAG_CHARTS_BRIDGE_URL` | `http://127.0.0.1:44411/diag/obd` | race-dash OBD bridge (bridge mode; served by the charts app on its existing port) |
 | `DIAG_REPLAY_FIXTURES` | `fixtures/round1_full_capture.json` | Replay source: one capture file or a comma-separated list |
 | `DIAG_QUERY_TIMEOUT_S` / `DIAG_QUERY_RETRIES` | `15` / `1` | Per-query budget and the single retry |
 | `DIAG_QUERY_SPACING_S` | `0.45` | Inter-query spacing on the shared lane |
@@ -167,5 +167,6 @@ registration is a two-step operation and the second step is a restart:
    hot-reload the config, and never write into `~/.hudiy/share/config` outside
    this step.
 
-Ports: race-dash occupies 44411 (charts SSE), 44412 (OBD bridge) and 44413
-(toggle), so diagnostics defaults to **44414**.
+Ports: race-dash occupies 44411 (charts SSE **and** the `/diag/obd` bridge
+route) and 44413 (toggle), so diagnostics defaults to **44414**. The bridge
+adds no listener of its own - it is a route on the charts app.

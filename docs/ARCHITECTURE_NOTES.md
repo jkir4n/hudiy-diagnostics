@@ -34,13 +34,14 @@ The diagnostics app **cannot open its own OBD client** on any Hudiy instance whe
 1. **Proxy lane (RECOMMENDED)** — add a controlled diagnostics lane inside the race-dash charts service (or a sibling service in its process group sharing its connection): diagnostics queries ride the already-served client. On installs without race-dash, the diagnostics app runs its own equivalent of charts' connection pattern (same code path) and is then the served client.
    - Pro: works on the current install immediately; one more endpoint, not a new service; the missing fixtures (below) get captured through this lane naturally.
    - Con: couples the diagnostics feature to the charts service's lifecycle.
+   - **STATUS (10 Sep 2026): implemented and live.** The lane is `POST /diag/obd` on the charts app itself — no second listener, no extra port. Request `{"command":"0100","timeout_s":12}`; success `{"ok":true,"command":"0100","raw":"<frames verbatim, incl. multi-frame 0:…1:…2:…>","age_s":0.1}`; `NO DATA` stays an empty string (`note:"no-data"`); single-flight, so a concurrent query gets 503. Verified on the reference install by driving the diagnostics lane's own `BridgeHost` + decoders through it against the running engine: `0100` support bitmap, `010C` rpm, `0902` multi-frame VIN reassembly intact, `03` = 0 codes, `0A00` = no data — while the charts SSE stream kept serving. Diagnostics side now defaults to it (`DIAG_MODE=bridge`, `DIAG_CHARTS_BRIDGE_URL=http://127.0.0.1:44411/diag/obd`).
 2. **Full-replacement mode** — diagnostics app implements charts' connection pattern as the sole OBD client; race-dash not installed / paused.
    - Pro: clean universality. Con: not coexistent on the same install.
 
 Universality note: option 1 degrades gracefully — if race-dash is absent, the diagnostics lane code runs standalone; if present, it proxies. Both from the same codebase.
 
 ## Missing fixtures (now build-time items, not research gaps)
-Because only the served charts process can query OBD, these 5 captures require the proxy lane (or temporary charts-process injection):
+Because only the served charts process can query OBD, these 5 captures require the proxy lane (or temporary charts-process injection) — the lane now exists as `POST /diag/obd` (see the STATUS note above), so they are capturable without touching charts' poller:
 - Clean Mode `0A` (permanent DTCs) answer
 - `0104` engine load, `0133` barometric pressure (both supported, never answered)
 - Clean `0685` boost OBDMID re-read
