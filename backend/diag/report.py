@@ -267,17 +267,45 @@ def _text_live(lines: List[str], report: dict) -> None:
     lines.append("")
 
 
+def _hex_list(values) -> str:
+    """Render PIDs/MIDs/TIDs as hex, tolerating int and pre-formatted entries.
+
+    ``support["pids"]`` holds decoded ints; a hand-built or older report may hold
+    "0x04"-style strings, and a renderer that raises on either is useless to a
+    mechanic (it did: ``%X format: an integer is required, not str``).
+    """
+    rendered = []
+    for value in values or []:
+        if isinstance(value, bool):
+            rendered.append(str(int(value)))
+        elif isinstance(value, int):
+            rendered.append("0x%02X" % value)
+        elif isinstance(value, str):
+            text = value.strip()
+            if not text:
+                continue
+            rendered.append(text if text.lower().startswith("0x") else "0x%s" % text.upper())
+        else:
+            rendered.append(str(value))
+    return ", ".join(rendered) or "-"
+
+
 def _text_support(lines: List[str], report: dict) -> None:
     support = report.get("support") or {}
-    pids = sorted(support.get("pids") or [])
+    pids = support.get("pids") or {}
     obdmid = support.get("obdmid") or {}
     lines.append("RUNTIME DISCOVERY (this car, this scan)")
     lines.append(_rule())
-    lines.append("  PIDs supported: %d %s"
-                 % (len(pids), ", ".join("0x%02X" % pid for pid in pids) or "-"))
+    if isinstance(pids, dict):
+        total = sum(len(ids or []) for ids in pids.values())
+        lines.append("  PIDs supported: %d" % total)
+        for command, ids in sorted(pids.items()):
+            lines.append("    %s: %s" % (command, _hex_list(ids)))
+    else:
+        # Older/hand-built reports kept a flat list.
+        lines.append("  PIDs supported: %d %s" % (len(pids), _hex_list(pids)))
     for key, ids in sorted(obdmid.items()):
-        lines.append("  Mode 06 %s: %s"
-                     % (key, ", ".join("0x%02X" % mid for mid in (ids or [])) or "-"))
+        lines.append("  Mode 06 %s: %s" % (key, _hex_list(ids)))
     lines.append("  freeze frame: %s" % ("supported"
                                          if support.get("freeze_frame") else "not supported"))
     lines.append("")
@@ -438,6 +466,25 @@ def _csv_live(rows: List[Tuple], report: dict) -> None:
                      entry.get("error") or entry.get("raw_hex") or ""))
 
 
+def _csv_support(rows: List[Tuple], report: dict) -> None:
+    """Which PIDs this car actually answered - a CSV reader needs that too."""
+    support = report.get("support") or {}
+    pids = support.get("pids") or {}
+    if isinstance(pids, dict):
+        for command, ids in sorted(pids.items()):
+            rows.append(("support", command, "", str(len(ids or [])), "",
+                         "supported", _hex_list(ids)))
+    elif pids:
+        rows.append(("support", "pids", "", str(len(pids)), "",
+                     "supported", _hex_list(pids)))
+    for key, ids in sorted((support.get("obdmid") or {}).items()):
+        rows.append(("support", "mode06", key, str(len(ids or [])), "",
+                     "advertised", _hex_list(ids)))
+    rows.append(("support", "freeze_frame", "", "",
+                 "yes" if support.get("freeze_frame") else "no",
+                 "supported" if support.get("freeze_frame") else "not supported", ""))
+
+
 def _csv_notes(rows: List[Tuple], report: dict) -> None:
     for note in report.get("notes") or []:
         rows.append(("notes", "", "", "", "", "note", note))
@@ -451,6 +498,7 @@ def render_csv(report: dict) -> str:
     _csv_readiness(rows, report)
     _csv_monitor_tests(rows, report)
     _csv_live(rows, report)
+    _csv_support(rows, report)
     _csv_notes(rows, report)
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")

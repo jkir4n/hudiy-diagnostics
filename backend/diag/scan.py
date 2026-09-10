@@ -53,6 +53,11 @@ FAULT_COMMANDS: Sequence[tuple] = (
     ("0102", "Freeze-frame DTC that triggered storage"),
 )
 
+#: Fault command -> the scan phase that owns it (``GET /scan?sections=...``).
+#: ``0102`` rides with the stored picture because the freeze-frame DTC is only
+#: meaningful next to the stored list it belongs to.
+FAULT_SECTIONS = {"03": "dtc", "07": "pending", "0A": "dtc", "0102": "dtc"}
+
 #: MIL + readiness, the inspection pair.
 READINESS_COMMANDS: Sequence[tuple] = (
     ("0101", "Monitor status since DTCs cleared"),
@@ -75,6 +80,52 @@ IDENTITY_COMMANDS: Sequence[tuple] = (
     ("0904", "Calibration ID (guarded, multi-frame)", True),
     ("0906", "Calibration verification numbers (guarded, multi-frame)", True),
 )
+
+
+_LINK_COUNTERS = ("queries", "timeouts", "retries", "failures")
+
+
+def _counter(link, name: str) -> int:
+    """One link counter, or 0 when a host/test link does not keep any."""
+    value = getattr(link, name, 0)
+    return int(value) if isinstance(value, (int, float)) else 0
+
+
+#: Phases a caller may request on their own (``GET /scan?sections=dtc,readiness``).
+#: A full scan runs all of them; ``live`` is the extra phase that only means
+#: anything once discovery has run, so it is never implied by another section.
+SECTIONS: Sequence[str] = (
+    "discovery", "dtc", "pending", "readiness", "mode06", "identity", "live",
+)
+
+
+def normalize_sections(sections) -> Optional[set]:
+    """Turn ``"dtc, readiness"`` (or a list) into a set of phases.
+
+    ``None`` and an empty selection both mean "everything" - a caller that
+    passes nothing gets the full scan. An unknown name is a caller error
+    (:class:`ValueError`), never silently ignored, so a typo cannot be
+    mistaken for a phase that simply found nothing.
+    """
+    if sections is None:
+        return None
+    if isinstance(sections, str):
+        parts = sections.split(",")
+    else:
+        parts = list(sections)
+    wanted, unknown = set(), []
+    for part in parts:
+        name = str(part).strip().lower()
+        if not name:
+            continue
+        if name in SECTIONS:
+            wanted.add(name)
+        else:
+            unknown.append(name)
+    if unknown:
+        raise ValueError("unknown scan section(s): %s (allowed: %s)"
+                         % (", ".join(unknown), ", ".join(SECTIONS)))
+    return wanted or None
 
 
 class ScanEngine:
@@ -103,6 +154,7 @@ class ScanEngine:
         self.finished_at: Optional[float] = None
         self.abort_reason: Optional[str] = None
         self.running = False
+        self.sections: Optional[set] = None
         self.report: Optional[dict] = None
         self.resolved_mode: Optional[str] = None
         self._vin: Optional[str] = None
@@ -163,10 +215,11 @@ class ScanEngine:
         return False
 
     # --- the scan ------------------------------------------------------------
-    def run(self, discovered_note: str = "") -> dict:
+    def run(self, discovered_note: str = "", sections=None) -> dict:
         if self.running:
             raise RuntimeError("scan already running")
         self.running = True
+        self.sections = normalize_sections(sections)
         self.scan_id = uuid.uuid4().hex[:12]
         self.started_at = self.clock()
         self.abort_reason = None
@@ -208,7 +261,15 @@ class ScanEngine:
             return True
         return False
 
+    def _wants(self, section: str) -> bool:
+        """Is this phase part of the requested scan? (no filter = all phases)"""
+        return self.sections is None or section in self.sections
+
     def _run_steps(self) -> dict:
+        # Link counters are process-lifetime totals, but a report is about *this*
+        # scan: a long-lived service would otherwise show a rising "queries"
+        # count and a reader could not tell how hard this scan worked.
+        counters = {name: _counter(self.link, name) for name in _LINK_COUNTERS}
         scan_meta: Dict[str, object] = {
             "id": self.scan_id,
             "started_at": self.started_at,
@@ -216,6 +277,7 @@ class ScanEngine:
             "mode": self.resolved_mode or self.cfg.normalized_mode(),
             "spacing_s": self.cfg.query_spacing_s,
             "timeout_s": self.cfg.query_timeout_s,
+            "sections": sorted(self.sections) if self.sections is not None else None,
         }
         report: Dict[str, object] = {
             "scan": scan_meta,
@@ -229,6 +291,8 @@ class ScanEngine:
                    "bitmaps": {}}
         supported_pids: set = set()
         for command, label in DISCOVERY_COMMANDS:
+            if not self._wants("discovery"):
+                break
             if self._expired():
                 break
             result = self.ask(command, label)
@@ -273,7 +337,10 @@ class ScanEngine:
         # 2. faults ------------------------------------------------------------
         codes = {"stored": [], "pending": [], "permanent": [], "mil": None,
                  "dtc_count": None, "freeze_frame_dtc": None, "queries": {}}
+        dtc_decoded: List[dict] = []
         for command, label in FAULT_COMMANDS:
+            if not self._wants(FAULT_SECTIONS.get(command, "dtc")):
+                continue
             if self._expired():
                 break
             result = self.ask(command, label)
@@ -284,6 +351,7 @@ class ScanEngine:
                 codes["freeze_frame_dtc"] = decoders.freeze_frame_dtc(decoded)
                 continue
             data = decoders.dtc_list(decoded, mode=int(command, 16))
+            dtc_decoded.append(data)
             key = _CODE_KEYS.get(command) or command
             codes[key] = data.get("codes") or []
             codes["queries"][command] = {"status": decoded.status,
@@ -299,6 +367,8 @@ class ScanEngine:
         monitor = None
         cycle_monitor = None
         for command, label in READINESS_COMMANDS:
+            if not self._wants("readiness"):
+                break
             if self._expired():
                 break
             result = self.ask(command, label)
@@ -315,11 +385,14 @@ class ScanEngine:
         report["monitors"] = {"since_clear": monitor, "this_cycle": cycle_monitor}
 
         # 4. Mode 06 ----------------------------------------------------------
-        report["monitor_tests"] = self._mode06(support, notes)
+        report["monitor_tests"] = (self._mode06(support, notes)
+                                   if self._wants("mode06") else [])
 
         # 5. identity ---------------------------------------------------------
         identity = {}
         for command, label, guarded in IDENTITY_COMMANDS:
+            if not self._wants("identity"):
+                break
             if self._expired():
                 break
             # 0904/0906 are multi-frame and are attempted once without a
@@ -339,6 +412,8 @@ class ScanEngine:
         # 6. live values ------------------------------------------------------
         live = []
         for pid in LIVE_PIDS:
+            if not self._wants("live"):
+                break
             if pid not in supported_pids:
                 continue
             if self._expired():
@@ -351,8 +426,12 @@ class ScanEngine:
         report["live"] = live
 
         # 7. verdict + code enrichment ----------------------------------------
-        summary = decoders.summarize_codes([codes["stored"], codes["pending"],
-                                            codes["permanent"]])
+        # summarize_codes() buckets the decoded dtc_list() mappings on their
+        # "mode", so it wants those mappings, not the flat code lists. When no
+        # fault query ran at all (section filter) there is no summary, and that
+        # is what degrades the verdict to "unknown" instead of letting an
+        # unread DTC table masquerade as "no codes stored".
+        summary = decoders.summarize_codes(dtc_decoded) if dtc_decoded else None
         codes["summary"] = summary
         self._vin = _identity_text(identity, "0902")
         enriched = self._enrich_codes(codes, identity)
@@ -368,10 +447,10 @@ class ScanEngine:
 
         scan_meta.update({
             "step_log": list(self.steps),
-            "queries": self.link.queries,
-            "timeouts": self.link.timeouts,
-            "retries": self.link.retries,
-            "failures": self.link.failures,
+            "queries": _counter(self.link, "queries") - counters["queries"],
+            "timeouts": _counter(self.link, "timeouts") - counters["timeouts"],
+            "retries": _counter(self.link, "retries") - counters["retries"],
+            "failures": _counter(self.link, "failures") - counters["failures"],
             "supported_pid_count": len(supported_pids),
             "supported_obdmid_count": sum(len(v) for v in support["obdmid"].values()),
             "steps": len(self.steps),
