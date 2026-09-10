@@ -103,6 +103,10 @@ class ServiceReplayTests(unittest.TestCase):
         self.assertEqual(report["vehicle"]["vin"], VIN)
         self.assertGreaterEqual(report["scan"]["queries"], 20)
         self.assertFalse(report["scan"]["aborted"])
+        live = report["live"]
+        self.assertTrue(live, "a full scan reads live PIDs")
+        self.assertTrue(all(e.get("pid") and e.get("name") for e in live),
+                        "every live row keeps the PID it asked, even on no-data")
 
     def test_repeated_scans_do_not_accumulate_link_counters(self):
         first = self.service.scan()["report"]["scan"]

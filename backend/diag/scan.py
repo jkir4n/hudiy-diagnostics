@@ -422,7 +422,15 @@ class ScanEngine:
             result = self.ask(command, names.pid_name(pid))
             if self._should_abort(result) or self._expired():
                 break
-            live.append(decoders.pid_value(result.decoded))
+            entry = dict(decoders.pid_value(result.decoded))
+            # A no-data reply carries no PID byte, so pid_value() cannot say
+            # what was asked. Stamp it from the request: otherwise the report
+            # loses which live value is missing and the row cannot be attributed.
+            if entry.get("pid") is None:
+                entry["pid"] = pid
+                entry["name"] = names.pid_name(pid)
+                entry["command"] = command
+            live.append(entry)
         report["live"] = live
 
         # 7. verdict + code enrichment ----------------------------------------
