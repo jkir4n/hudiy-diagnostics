@@ -51,3 +51,20 @@ All notable changes. Format: date — phase — what.
 ### Research phase verdict
 - 4 researcher cards complete (feature survey, UI API inventory, kiosk UX, diesel readiness); all findings committed and QA-gated (load-bearing claims verified live: Wal33D repo, vPIC, VW TSB PDF, CA BAR, Api.proto, overlays.json, NHTSA Federal Register, Google Design for Driving).
 - Ready for Phase 2: backend specialist card first (constraint block = docs/), then frontend.
+
+## 2026-09-10 — Phase 2b (backend): HTTP lane + scan phases + deploy
+
+### Added
+- `backend/server.py` — the diagnostics HTTP lane (stdlib only): `GET /health` (alias `/diag/status`), `/scan[?sections=...]`, `/report[?format=text|csv|json]`, `/dtc?code=&maker=`, `/vin?vin=&online=`, `GET /` index. Also `/diag/report.txt|.csv` (V1_SPEC names). CLI: `python3 -m backend.server`, binds 127.0.0.1:44414 by default.
+- Degradation contract, so the UI can always tell "the car is clean" from "I could not ask": `/health` always 200 with `obd.state` (`online|offline|reconnecting|stale-handle|unknown|unavailable`) + reason; `/scan` answers 200 with `status:"offline"|"unavailable"` and `report:null` (never a 500 or a fake empty report); a started-but-unfinished scan is `status:"partial"` with the engine's `abort_reason` and only the phases that completed; concurrent scans get 409; bad input 400; only real bugs 500.
+- `backend/diag/fixtures.py` — Phase 1 capture files -> replayable command map (JSON object / JSONL, `.decoded.json` skipped, multi-file merge, per-command metadata); powers `DIAG_MODE=replay` (default source `fixtures/round1_full_capture.json`).
+- `backend/tests/test_diag_server.py` — 21 tests: the replay car over a real loopback socket, plus the degradation contract with fake links (asleep car, stale ObdManager, missing fixture, concurrent scan, bad sections/format/code).
+- `backend/deploy/hudiy-diagnostics.service` + `backend/deploy/install.sh` — user units (race-dash pattern, no root, nothing autolaunches: the app is started from the Hudiy menu), idempotent installer (`--dry-run`, `--uninstall`) that copies `backend/`+`fixtures/`, enables the unit and polls `/health`; per-instance settings in `~/.config/hudiy-diagnostics/env`.
+- `backend/README.md` — run modes, endpoint table, degradation rules, env reference, tests, deploy.
+- `GET /scan?sections=` — run one phase on its own (`discovery`, `dtc`, `pending`, `readiness`, `mode06`, `identity`, `live`); no filter = full scan (unchanged behaviour).
+
+### Fixed
+- `report.py` text/csv renderers crashed on every real report: they treated the PID-support *map* (`{"0100": [4,5,...]}`) as a flat list and formatted its keys with `0x%02X`. Now rendered via `_hex_list` (int or pre-formatted), and CSV gained the support/`self-test` rows it was missing, so a CSV reader can also see what the car answered.
+- `scan.py` reported link-lifetime totals as per-scan traffic. `scan.queries/timeouts/retries/failures` are now deltas measured across the scan — on a long-lived service the old numbers grew with every scan and read as if one scan had sent them.
+- `scan.py` called `decoders.summarize_codes()` with the flat stored/pending/permanent code lists instead of the decoded `dtc_list()` mappings it buckets on; and with no fault phase run it no longer fabricates a "0 codes, clear" summary (it passes `None`, which degrades the verdict to unknown rather than falsely reporting the car as ready).
+
