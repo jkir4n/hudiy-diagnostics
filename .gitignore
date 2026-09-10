@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Test / tool scratch
+.pytest_cache/
+.mypy_cache/
+*.log
+
+# Runtime state produced by the diagnostics server
+backend/var/
+backend/state/
+*.sqlite3
+*.sqlite3-journal
+
+# Reports generated locally
+backend/reports/
