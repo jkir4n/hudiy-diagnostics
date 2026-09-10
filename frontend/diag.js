@@ -436,7 +436,6 @@
 
   function renderTiles() {
     var report = S.scan && S.scan.report ? S.scan.report : null;
-    var host = S.screen === 'S0' ? $('S0') : $('S2');
     var wrap = S.screen === 'S0' ? null : $('tilesHub');
     if (S.screen === 'S0') {
       // S0 keeps a single start card; the tiles live on S2 only.
@@ -468,7 +467,6 @@
     add(wrap, tile('Monitor tests', advValue, advSub, function () { go('S6'); }, true, false));
     add(wrap, tile('Vehicle', vin ? (vin.slice(-7)) : '\u2013',
       vin ? 'VIN on file' : 'No VIN read', function () { go('S7'); }, true, true));
-    void host;
   }
 
   function tile(label, value, sub, onTap, enabled, small) {
@@ -1095,7 +1093,9 @@
       if (S.scan) { plan.push(button('Open report', '', function () { go('S8'); loadReport(); })); }
       if (S.scan) { plan.push(button('Health summary', '', function () { go('S2'); })); }
     } else if (S.screen === 'S1') {
-      plan.push(button('Cancel', '', cancelScan, !S.busy));
+      // Cancel must be live exactly while a scan is in flight - it is the only
+      // way out of S1 (the footer button is the sole cancel affordance).
+      plan.push(button('Cancel', '', cancelScan, !!S.busy));
       plan.push(el('span', 'grow'));
       if (!S.busy && S.degraded) { plan.push(button('Retry', 'btn-primary', startScan)); }
     } else if (S.screen === 'S2') {

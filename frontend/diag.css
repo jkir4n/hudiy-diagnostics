@@ -350,6 +350,13 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
   padding: 4px 10px;
 }
 .steps li[data-done="1"] { color: var(--ok); border-color: rgba(0, 158, 115, .45); }
+.scan-cap {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--quiet);
+}
 .scan-note { margin: 0; font-size: 12px; color: var(--quiet); line-height: 1.5; }
 
 /* ---------------------------------------------------------------- report */

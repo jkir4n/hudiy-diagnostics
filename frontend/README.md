@@ -31,8 +31,8 @@ remembered in `localStorage` and can be flipped on screen S8.
 
 ## Screens
 
-    S0  home            link state + the four tiles, disabled until a scan exists
-    S1  scanning        section-by-section progress, elapsed timer, cancel
+    S0  home            link state + one start card (scan, or open what is cached)
+    S1  scanning        indeterminate sweep, elapsed timer, section legend, cancel
     S2  health summary  verdict, MIL, fault counts, the four tiles
     S3  fault codes     tabs: stored / pending / permanent
     S4  code detail     one code: decoded text, severity, freeze-frame status
@@ -55,6 +55,8 @@ input only.
 | all | activate | tap | `onTriggered` | `Enter`, `Space` |
 | all | back / leave | swipe right | `onGoBack` | `Escape`, `Backspace` |
 | all | next / previous tab | swipe left (S3, S8) | `onGoRight` / `onGoLeft` | `ArrowRight` / `ArrowLeft` |
+| all | scroll a long list | vertical swipe (native scroll) | move the ring past the fold; the list follows focus | same key that moves the ring |
+| all | keep the pointer out of the way | any touch hides the ring | - | any key shows it |
 | S0 | start scan | footer button, or the "Start scan" tile | move + `onTriggered` | move + `Enter` |
 | S1 | cancel scan | footer button only (it stays focused) | move + `onTriggered` | `Enter` on it |
 | S2 | open S3/S5/S6/S7 | tap a tile | move + `onTriggered` | move + `Enter` |
@@ -116,3 +118,8 @@ result. Never say ready when the ECU does not answer.
   copy is the state that was actually verified.
 * Decoding a VIN online needs outbound internet; the page defaults to the
   offline decode and treats "no internet" as information, never as an error.
+* S1 progress is an indeterminate sweep, not a percentage: the lane answers
+  `/scan` as one request, so the page has no in-flight section signal and does
+  not invent one. The section chips are a legend of what the scan reads and turn
+  green only when the report lands. Real section-by-section progress needs the
+  backend to publish the in-flight stage in `/health` first.
