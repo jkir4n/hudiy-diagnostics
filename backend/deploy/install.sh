@@ -64,9 +64,12 @@ say "installing from $REPO_DIR -> $INSTALL_DIR"
 run mkdir -p "$INSTALL_DIR" "$UNIT_DIR" "$ENV_DIR"
 # Replace (not merge) the copied trees so a pulled version never leaves stale
 # modules behind - this is what makes re-running the installer an update.
-run rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/fixtures"
+run rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/fixtures" "$INSTALL_DIR/frontend"
 run cp -a "$REPO_DIR/backend" "$INSTALL_DIR/backend"
 run cp -a "$REPO_DIR/fixtures" "$INSTALL_DIR/fixtures"
+# The overlay page is served by the lane itself (/app/* -> frontend/*), so the
+# installed layout must carry it too.
+run cp -a "$REPO_DIR/frontend" "$INSTALL_DIR/frontend"
 run rm -rf "$INSTALL_DIR/backend/__pycache__"
 if [ "$DRY_RUN" = "0" ]; then
   find "$INSTALL_DIR/backend" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
@@ -101,6 +104,26 @@ need_systemctl_user
 say "reloading user systemd and starting $SERVICE"
 run systemctl --user daemon-reload
 run systemctl --user enable --now "$SERVICE"
+
+# Register the overlay and the menu entry with Hudiy - but only on a machine
+# that actually has a Hudiy config layout. The fragments under frontend/hudiy/
+# are MERGED into the live config (never copied over it), the existing files are
+# backed up first, and Hudiy only reads them at start: see
+# frontend/hudiy/README.md, including the menu-action item that still needs a
+# bench trial.
+say "registering 'Diagnostics' with Hudiy (menu + overlay)"
+HUDIY_CONFIG_DIR="${DIAG_HUDIY_CONFIG_DIR:-$HOME/.hudiy/share/config}"
+if [ -d "$HUDIY_CONFIG_DIR" ]; then
+  if [ "$DRY_RUN" = "1" ]; then
+    run python3 "$INSTALL_DIR/frontend/hudiy/merge_config.py" "$HUDIY_CONFIG_DIR" --port "$PORT" --dry-run
+  else
+    run python3 "$INSTALL_DIR/frontend/hudiy/merge_config.py" "$HUDIY_CONFIG_DIR" --port "$PORT"
+  fi
+  echo "    restart Hudiy for the new menu entry (it reads its config at start)"
+else
+  echo "    no Hudiy config layout at $HUDIY_CONFIG_DIR - skipped"
+  echo "    (run: python3 $INSTALL_DIR/frontend/hudiy/merge_config.py <config dir> --port $PORT)"
+fi
 
 say "health check: http://$HOST:$PORT/health"
 if [ "$DRY_RUN" = "1" ]; then

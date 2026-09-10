@@ -9,8 +9,12 @@ readable JSON with a status the UI can branch on - never a 500, never a hang.
 
 from __future__ import annotations
 
+import glob
+import importlib.util
 import json
 import os
+import shutil
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -24,6 +28,7 @@ from backend.diag import lane as lane_mod
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROUND1 = os.path.join(REPO, "fixtures", "round1_full_capture.json")
+FRONTEND = os.path.join(REPO, "frontend")
 
 #: Reference-car values, recorded in Phase 1 (docs/DECODED_FIXTURES.md).
 VIN = "WVWZZZ1KZAW555555"
@@ -300,6 +305,54 @@ class HttpSocketTests(unittest.TestCase):
             self.assertEqual(handle.status, 200)
             self.assertEqual(handle.read(), b"")
 
+    # -- the overlay page (phase 2): /app/* -> frontend/* -----------------
+
+    def test_overlay_page_is_served_by_the_lane(self):
+        status, headers, body = self.get("/app/diag.html")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+        text = body.decode("utf-8")
+        self.assertIn("<title>Diagnostics</title>", text)
+        self.assertIn("/app/diag.css", text)
+        self.assertIn("/app/diag.js", text)
+
+    def test_bare_app_path_lands_on_the_page(self):
+        status, headers, body = self.get("/app")
+        self.assertEqual(status, 200)
+        self.assertIn(b"<title>Diagnostics</title>", body)
+        self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+
+    def test_overlay_assets_and_hudiy_fragments_are_served(self):
+        expected = (
+            ("/app/diag.css", "text/css; charset=utf-8", b"--bg"),
+            ("/app/diag.js", "application/javascript; charset=utf-8",
+             b"window.hudiy"),
+            ("/app/hudiy/overlays.json", "application/json; charset=utf-8",
+             b'"identifier": "diag"'),
+            ("/app/hudiy/applications_menu.json",
+             "application/json; charset=utf-8", b'"action": "diag_show"'),
+        )
+        for path, ctype, needle in expected:
+            status, headers, body = self.get(path)
+            self.assertEqual(status, 200, path)
+            self.assertEqual(headers["Content-Type"], ctype, path)
+            self.assertIn(needle, body, path)
+
+    def test_static_404s_and_traversal(self):
+        for path in ("/app/nope.html", "/app/hudiy/../overlays.json",
+                     "/app/%2e%2e%2fbackend%2fserver.py"):
+            with self.assertRaises(urllib.error.HTTPError, msg=path) as ctx:
+                self.get(path)
+            self.assertEqual(ctx.exception.code, 404, path)
+
+    def test_head_on_static_asset_has_no_body(self):
+        request = urllib.request.Request(
+            "http://127.0.0.1:%d/app/diag.js" % self.port, method="HEAD")
+        with urllib.request.urlopen(request, timeout=30) as handle:
+            self.assertEqual(handle.status, 200)
+            self.assertGreater(int(handle.headers["Content-Length"]), 0)
+            self.assertEqual(handle.read(), b"")
+
 
 class PathNormalizationTests(unittest.TestCase):
     def test_v1_spec_spellings(self):
@@ -321,6 +374,164 @@ class PathNormalizationTests(unittest.TestCase):
         self.assertEqual(server_mod._first({"a": ["x", "y"]}, "a"), "x")
         self.assertIsNone(server_mod._first({"a": ["  "]}, "a"))
         self.assertIsNone(server_mod._first({}, "a"))
+
+
+class StaticAssetTests(unittest.TestCase):
+    """`_static_response` is the only file-serving code path - pin its edges."""
+
+    def test_refuses_to_leave_the_frontend_tree(self):
+        for bad in ("../backend/server.py", "..%2f..%2fetc%2fpasswd",
+                    "/etc/passwd", "../../.git/config"):
+            with self.assertRaises(server_mod.NotFound, msg=bad):
+                server_mod._static_response(bad)
+
+    def test_defaults_to_the_overlay_page(self):
+        response = server_mod._static_response("")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.content_type, "text/html; charset=utf-8")
+        self.assertIn(b"<title>Diagnostics</title>", response.body)
+
+    def test_unknown_extension_is_not_guessed(self):
+        response = server_mod._static_response("hudiy/README.md")
+        self.assertEqual(response.content_type, "text/markdown; charset=utf-8")
+
+
+class HudiyRegistrationTests(unittest.TestCase):
+    """The page and its Hudiy fragments must match the documented schema."""
+
+    def load(self, *parts):
+        with open(os.path.join(FRONTEND, *parts), "r", encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_overlay_fragment_matches_the_documented_schema(self):
+        entry = json.loads(self.load("hudiy", "overlays.json"))
+        for key in ("identifier", "action", "url", "width", "height",
+                    "visibility", "visibleOnActions", "staticPosition"):
+            self.assertIn(key, entry)
+        self.assertEqual(entry["identifier"], "diag")
+        self.assertEqual(entry["action"], "diag_show")
+        self.assertEqual((entry["width"], entry["height"]), (800, 480),
+                         "the overlay is the head unit's screen size")
+        self.assertTrue(entry["url"].endswith("/app/diag.html"))
+        self.assertIn(entry["action"], entry["visibleOnActions"],
+                      "the menu action must be the one that shows the overlay")
+
+    def test_menu_fragment_is_a_material_icon_in_the_hudiy_category(self):
+        item = json.loads(self.load("hudiy", "applications_menu.json"))
+        self.assertEqual(item["action"], "diag_show")
+        self.assertEqual(item["categories"], ["Hudiy"])
+        self.assertIn("Material", item["iconFontFamily"])
+        self.assertEqual(item["iconName"], "troubleshoot")
+        self.assertEqual(item["label"], "Diagnostics")
+
+    def test_page_reaches_nothing_off_box(self):
+        """A car with no internet must still get the whole UI from the lane."""
+        for name in ("diag.html", "diag.css", "diag.js"):
+            text = self.load(name)
+            for needle in ("http://", "https://", "//cdn", "fonts.googleapis",
+                           "googleapis"):
+                self.assertNotIn(needle, text, "%s must not reach off-box" % name)
+
+    def test_html_links_the_sibling_assets(self):
+        html = self.load("diag.html")
+        self.assertIn('href="/app/diag.css"', html)
+        self.assertIn('src="/app/diag.js"', html)
+
+    def test_every_screen_shell_exists(self):
+        html = self.load("diag.html")
+        for index in range(9):
+            self.assertIn('id="S%d"' % index, html,
+                          "V1_SPEC wants screens S0..S8")
+
+    def test_bridge_callbacks_and_the_key_fallback_are_wired(self):
+        js = self.load("diag.js")
+        for callback in ("onMoveToNextControl", "onMoveToPreviousControl",
+                         "onTriggered", "onGoBack"):
+            self.assertIn("%s = function" % callback, js)
+        self.assertIn("keydown", js, "rule 6 wants a non-Hudiy input path")
+        self.assertIn("touchstart", js, "rule 6 wants a touch path")
+
+
+class MergeConfigTests(unittest.TestCase):
+    """`merge_config.py` inserts into a live Hudiy config, never over it."""
+
+    @classmethod
+    def setUpClass(cls):
+        path = os.path.join(FRONTEND, "hudiy", "merge_config.py")
+        spec = importlib.util.spec_from_file_location("diag_merge_config", path)
+        cls.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.mod)
+
+    def setUp(self):
+        self.cfg = tempfile.mkdtemp(prefix="diag-hudiy-config-")
+        self.addCleanup(shutil.rmtree, self.cfg, True)
+        # A machine that already runs something else on Hudiy.
+        self.write("overlays.json", {
+            "overlays": [{"identifier": "race_dash", "url": "http://127.0.0.1:44411/"}],
+            "xStep": 20,
+        })
+        self.write("applications_menu.json", {
+            "items": [{"categories": ["Hudiy"], "label": "Race Dash",
+                       "action": "race_dash_show"}],
+        })
+
+    def write(self, name, payload):
+        with open(os.path.join(self.cfg, name), "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+
+    def read(self, name):
+        with open(os.path.join(self.cfg, name), "r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def test_merges_instead_of_replacing(self):
+        self.assertEqual(self.mod.main([self.cfg, "--port", "44414"]), 0)
+        doc = self.read("overlays.json")
+        ids = [item["identifier"] for item in doc["overlays"]]
+        self.assertEqual(sorted(ids), ["diag", "race_dash"])
+        self.assertEqual(doc["xStep"], 20, "unrelated keys must survive")
+        actions = [item["action"] for item in self.read("applications_menu.json")["items"]]
+        self.assertEqual(sorted(actions), ["diag_show", "race_dash_show"])
+
+    def test_re_run_is_idempotent_and_follows_a_port_change(self):
+        self.mod.main([self.cfg, "--port", "44414"])
+        self.mod.main([self.cfg, "--port", "44414"])
+        doc = self.read("overlays.json")
+        self.assertEqual(len(doc["overlays"]), 2, "no duplicate overlay entry")
+        self.assertEqual(len(self.read("applications_menu.json")["items"]), 2)
+        self.mod.main([self.cfg, "--port", "44415"])
+        entry = [item for item in self.read("overlays.json")["overlays"]
+                 if item["identifier"] == "diag"][0]
+        self.assertTrue(entry["url"].endswith(":44415/app/diag.html"))
+
+    def test_it_backs_up_exactly_the_files_it_changes(self):
+        self.assertEqual(glob.glob(os.path.join(self.cfg, "*.bak-*")), [],
+                         "nothing to back up before the first merge")
+        self.mod.main([self.cfg, "--port", "44414"])
+        backups = sorted(os.path.basename(path)
+                         for path in glob.glob(os.path.join(self.cfg, "*.bak-*")))
+        self.assertEqual([name.split(".bak-")[0] for name in backups],
+                         ["applications_menu.json", "overlays.json"])
+        # ... and the backup still holds the file as it was before the merge.
+        with open(os.path.join(self.cfg, backups[0]), "r", encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["items"][0]["action"], "race_dash_show")
+
+    def test_dry_run_writes_nothing(self):
+        self.assertEqual(self.mod.main([self.cfg, "--dry-run"]), 0)
+        ids = [item["identifier"] for item in self.read("overlays.json")["overlays"]]
+        self.assertEqual(ids, ["race_dash"])
+        self.assertEqual(glob.glob(os.path.join(self.cfg, "*.bak-*")), [])
+
+    def test_missing_config_dir_is_not_an_error(self):
+        missing = os.path.join(self.cfg, "nope")
+        self.assertEqual(self.mod.main([missing]), 0)
+        self.assertFalse(os.path.exists(missing), "must not create the layout")
+
+    def test_it_refuses_a_config_file_it_does_not_understand(self):
+        self.write("overlays.json", {"overlays": "not-a-list"})
+        with self.assertRaises(SystemExit):
+            self.mod.main([self.cfg, "--port", "44414"])
+        self.assertEqual(self.read("overlays.json"), {"overlays": "not-a-list"},
+                         "the original file must be left exactly as it was")
 
 
 if __name__ == "__main__":

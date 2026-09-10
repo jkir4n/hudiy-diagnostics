@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=800, height=480, initial-scale=1">
+<title>Diagnostics</title>
+<link rel="stylesheet" href="/app/diag.css">
+</head>
+<body data-screen="S0" data-bridge="auto">
+
+<div id="app">
+
+  <header class="chrome">
+    <button id="back" class="icon-btn" type="button" aria-label="Back">&#8249;</button>
+    <div class="titles">
+      <h1 id="title">Diagnostics</h1>
+      <p id="subtitle">Vehicle scan</p>
+    </div>
+    <span id="modeTag" class="tag" hidden>Replay</span>
+    <span id="link" class="pill" data-state="unknown" title="ECU link">Checking link&#8230;</span>
+  </header>
+
+  <main id="main">
+
+    <!-- S0 - idle / launcher ------------------------------------------- -->
+    <section class="screen" id="S0" aria-label="Start">
+      <div class="hero" id="s0Hero">
+        <p class="hero-kicker">Engine control unit</p>
+        <p class="hero-state" id="s0State">Checking&#8230;</p>
+        <p class="hero-note" id="s0Note">No scan has run yet.</p>
+      </div>
+      <p class="hint">Opened from the Hudiy menu. Nothing runs in the background while this page is closed.</p>
+    </section>
+
+    <!-- S1 - scanning --------------------------------------------------- -->
+    <section class="screen" id="S1" aria-label="Scanning">
+      <div class="card card-scan">
+        <div class="scan-top">
+          <p class="scan-label">Asking the ECU</p>
+          <p class="scan-timer" id="scanTimer">0s</p>
+        </div>
+        <div class="track" aria-hidden="true"><div class="track-fill" id="scanTrack"></div></div>
+        <ul class="steps" id="scanSteps"></ul>
+        <p class="scan-note" id="scanNote">Polling the diagnostics lane. A full scan reads PIDs, stored codes, the readiness wall, Mode&nbsp;06 tests and identity &#8212; usually under 30&nbsp;seconds.</p>
+      </div>
+    </section>
+
+    <!-- S2 - health summary -------------------------------------------- -->
+    <section class="screen" id="S2" aria-label="Health summary">
+      <div class="card verdict" id="verdict"></div>
+      <div class="tiles" id="tilesHub"></div>
+      <p class="stamp" id="scanStamp"></p>
+    </section>
+
+    <!-- S3 - fault codes ----------------------------------------------- -->
+    <section class="screen" id="S3" aria-label="Fault codes">
+      <div class="tabs" id="dtcTabs" role="tablist"></div>
+      <ul class="rows scroll" id="dtcList"></ul>
+      <p class="empty" id="dtcEmpty" hidden></p>
+    </section>
+
+    <!-- S4 - fault code detail ----------------------------------------- -->
+    <section class="screen" id="S4" aria-label="Fault code detail">
+      <div class="scroll" id="dtcDetail"></div>
+    </section>
+
+    <!-- S5 - readiness wall -------------------------------------------- -->
+    <section class="screen" id="S5" aria-label="Readiness">
+      <div class="scroll" id="readinessWall"></div>
+    </section>
+
+    <!-- S6 - Mode 06 monitor tests ------------------------------------- -->
+    <section class="screen" id="S6" aria-label="Monitor tests">
+      <ul class="rows scroll" id="mode06"></ul>
+    </section>
+
+    <!-- S7 - vehicle identity ------------------------------------------ -->
+    <section class="screen" id="S7" aria-label="Vehicle">
+      <ul class="rows scroll" id="identity"></ul>
+    </section>
+
+    <!-- S8 - report / settings ---------------------------------------- -->
+    <section class="screen" id="S8" aria-label="Report">
+      <div class="tabs" id="reportTabs" role="tablist"></div>
+      <pre class="report scroll" id="reportPre">No report yet.</pre>
+      <div class="settings" id="settings"></div>
+    </section>
+
+  </main>
+
+  <footer class="actions" id="actions"></footer>
+
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/app/diag.js"></script>
+</body>
+</html>

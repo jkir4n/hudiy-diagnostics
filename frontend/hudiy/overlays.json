@@ -1,0 +1,14 @@
+{
+  "identifier": "diag",
+  "action": "diag_show",
+  "width": 800,
+  "height": 480,
+  "x": 0,
+  "y": 0,
+  "visibility": "NONE",
+  "url": "http://127.0.0.1:44414/app/diag.html",
+  "controlAudioFocus": false,
+  "audioStreamCategory": "NONE",
+  "visibleOnActions": ["diag_show"],
+  "staticPosition": true
+}

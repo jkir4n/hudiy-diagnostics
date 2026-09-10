@@ -1,0 +1,7 @@
+{
+  "categories": ["Hudiy"],
+  "label": "Diagnostics",
+  "iconFontFamily": "Material Symbols Rounded",
+  "iconName": "troubleshoot",
+  "action": "diag_show"
+}

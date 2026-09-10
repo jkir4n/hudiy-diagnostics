@@ -50,6 +50,24 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+#: Read-only static tree for the overlay page: /app/<path> serves frontend/<path>.
+#: The Hudiy config fragments live in frontend/hudiy/ and are served from
+#: /app/hudiy/*.json so an install can fetch them over HTTP if it wants to.
+_FRONTEND_DIR = os.path.join(_REPO_ROOT, "frontend")
+
+#: The whole MIME table the frontend needs - no new dependencies.
+_STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+}
+
 from backend.diag import __version__ as diag_version  # noqa: E402
 from backend.diag import config as config_mod  # noqa: E402
 from backend.diag import dtc as dtc_mod  # noqa: E402
@@ -448,6 +466,10 @@ class DiagService:
         if method not in ("GET", "HEAD"):
             raise ServiceError("%s is not supported (read-only service)" % method,
                                status_code=405)
+        # The overlay page is static: served before route normalisation so that
+        # paths like /app/hudiy/overlays.json keep their extension.
+        if path == "/app" or path.startswith("/app/"):
+            return _static_response(path[4:] if path.startswith("/app/") else "")
         target, forced_format = _normalize_path(path)
         try:
             if target == "/health":
@@ -546,6 +568,30 @@ def _normalize_path(path: str):
     if clean == "/info":
         return "/", forced
     return clean, forced
+
+
+def _static_response(relpath: str) -> Response:
+    """Serve one file from the repo's ``frontend/`` tree, read-only.
+
+    ``/app/diag.html`` -> ``frontend/diag.html``. Path traversal is refused by
+    normalising first and then requiring the result to stay inside the tree, so
+    ``/app/../backend/server.py`` is a 404 rather than a source leak.
+    """
+    rel = urllib.parse.unquote(relpath or "").strip("/")
+    if not rel:
+        rel = "diag.html"          # /app and /app/ land on the overlay page
+    root = os.path.normpath(_FRONTEND_DIR)
+    target = os.path.normpath(os.path.join(root, rel))
+    if target != root and not target.startswith(root + os.sep):
+        raise NotFound("no such static file %r" % relpath)
+    if not os.path.isfile(target):
+        raise NotFound("no such static file %r (the overlay page lives in "
+                       "frontend/)" % relpath)
+    with open(target, "rb") as handle:
+        body = handle.read()
+    ext = os.path.splitext(target)[1].lower()
+    return Response(200, body, _STATIC_TYPES.get(ext,
+                                                "application/octet-stream"))
 
 
 # ---------------------------------------------------------------------------

@@ -125,7 +125,12 @@ the HTTP lane over a real loopback socket in replay mode and then asserts the
 degradation contract with fake links (asleep car, stale handle, missing fixture,
 concurrent scan, bad input). No car and no network are required.
 
-## Deploy
+## The overlay page (`frontend/`)
+
+`GET /app/<path>` serves the read-only `frontend/` tree, so one process covers
+both halves of the product:
+
+    /app/diag.htm...[truncated]
 
 ```bash
 ./backend/deploy/install.sh              # install/update + start (no root)
