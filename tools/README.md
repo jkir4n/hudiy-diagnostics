@@ -35,6 +35,16 @@ Run procedure (validated twice on-car):
 6. `pkill -9 -f charts_capture; rm /opt/hudiy-obd-charts/charts_capture.py;
    systemctl --user start hudiy-obd-charts`; verify health again.
 
+## App smoke test (Phase 2c)
+
+- `smoke_control_lane.py` — NOT a probe: it runs the real backend server
+  (`python3 -m backend.server`, replay mode) against a fake Hudiy speaking the
+  real wire framing, and asserts the control lane end to end — `/health` online,
+  a dispatched action re-showing the overlay, `POST /ui/hide` sending `NONE`.
+  Needs Hudiy's generated `Api_pb2.py` (the unit tests use a stub):
+  `DIAG_HUDIY_API_PB2=/opt/hudiy-obd-charts python3 tools/smoke_control_lane.py`.
+  Picks fresh loopback ports for both sockets, so it never touches a live Hudiy.
+
 ## Pitfalls (each one cost a debugging cycle — do not re-learn)
 
 1. **Script must live in `/opt/hudiy-obd-charts/`.** Python resolves imports
