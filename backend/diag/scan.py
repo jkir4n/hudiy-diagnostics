@@ -354,7 +354,7 @@ class ScanEngine:
         summary = decoders.summarize_codes([codes["stored"], codes["pending"],
                                             codes["permanent"]])
         codes["summary"] = summary
-        self._vin = (identity.get("0902") or {}).get("value")
+        self._vin = _identity_text(identity, "0902")
         enriched = self._enrich_codes(codes, identity)
         report["codes"] = enriched
         readiness = verdict.evaluate_readiness(
@@ -363,7 +363,7 @@ class ScanEngine:
         readiness["this_cycle"] = cycle_monitor
         report["readiness"] = readiness
 
-        vehicle = self._vehicle(identity, supported_pids)
+        vehicle = self._vehicle(identity, supported_pids, live)
         report["vehicle"] = vehicle
 
         scan_meta.update({
@@ -455,17 +455,25 @@ class ScanEngine:
         return codes
 
     # --- vehicle block ------------------------------------------------------
-    def _vehicle(self, identity: dict, supported_pids: set) -> dict:
+    def _vehicle(self, identity: dict, supported_pids: set,
+                 live: Optional[Sequence[dict]] = None) -> dict:
         vin = _identity_text(identity, "0902")
         calid = _identity_text(identity, "0904")
         cvn = (identity.get("0906") or {}).get("value")
         ecu_name = _identity_text(identity, "090A")
-        standards = (identity.get("01%02X" % 0x1C) or {})
-        standard_code = standards.get("raw")
+        # PID 0x1C is a *live* reading, not a Mode 09 reply: look for it in the
+        # live block first (identity never holds it) and fall back to whatever
+        # the identity dict happens to carry.
+        decoded_live = next((entry for entry in (live or [])
+                             if entry.get("pid") == 0x1C), None)
+        if decoded_live is None:
+            decoded_live = identity.get("01%02X" % 0x1C) or {}
+        standard_code = decoded_live.get("raw")
         standard = {"code": standard_code,
                     "name": names.obd_standard_name(standard_code),
-                    "raw_hex": standards.get("raw_hex")}
-        decoded_live = standards
+                    "raw_hex": decoded_live.get("raw_hex")}
+        vin_info = vin_util.resolve(vin, maker_hint=self.cfg.dtc_default_maker,
+                                    online_enabled=False)
         return {
             "vin": vin,
             "calid": calid,
@@ -475,6 +483,7 @@ class ScanEngine:
             "raw_identity": identity,
             "pid_01C": decoded_live,
             "vin_17_chars": len(vin or "") == 17,
+            "vin_info": vin_info,
             "logs_available": {
                 "stored_dtc_count": 0x01 in supported_pids,
             },
