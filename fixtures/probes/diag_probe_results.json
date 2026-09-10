@@ -1,0 +1,196 @@
+{
+ "probe_meta": {
+  "target": "via Hudiy 127.0.0.1:44405",
+  "t": "2026-09-09T20:22:57",
+  "link": "ELM327 BT RFCOMM, ISO 15765-4 CAN 11-bit"
+ },
+ "0100": {
+  "desc": "mode01 supported PIDs bitmap A0-A7",
+  "answered": true,
+  "raw": [
+   "4100983BA013"
+  ]
+ },
+ "0120": {
+  "desc": "mode01 supported PIDs bitmap A8-BF",
+  "answered": true,
+  "raw": [
+   "4120B019A001"
+  ]
+ },
+ "0101": {
+  "desc": "MIL on/off + DTC count + readiness (diesel monitors)",
+  "answered": true,
+  "raw": [
+   "4101000EA800"
+  ]
+ },
+ "0141": {
+  "desc": "monitor status THIS drive cycle",
+  "answered": true,
+  "raw": [
+   "4141000EA800"
+  ]
+ },
+ "0102": {
+  "desc": "freeze-frame DTC",
+  "answered": true,
+  "raw": [
+   ""
+  ]
+ },
+ "011C": {
+  "desc": "OBD standard (expect 06=EOBD)",
+  "answered": true,
+  "raw": [
+   "411C06"
+  ]
+ },
+ "0130": {
+  "desc": "warm-ups since codes cleared",
+  "answered": true,
+  "raw": [
+   "413014"
+  ]
+ },
+ "0131": {
+  "desc": "distance since codes cleared",
+  "answered": true,
+  "raw": [
+   "413105EF"
+  ]
+ },
+ "0121": {
+  "desc": "distance with MIL on",
+  "answered": true,
+  "raw": [
+   "41210000"
+  ]
+ },
+ "014E": {
+  "desc": "time since codes cleared",
+  "answered": true,
+  "raw": [
+   ""
+  ]
+ },
+ "0142": {
+  "desc": "control module voltage",
+  "answered": true,
+  "raw": [
+   "414231E5"
+  ]
+ },
+ "010C": {
+  "desc": "sanity: engine RPM",
+  "answered": true,
+  "raw": [
+   "410C0DB5"
+  ]
+ },
+ "015C": {
+  "desc": "probe: engine oil temp",
+  "answered": true,
+  "raw": [
+   ""
+  ]
+ },
+ "012F": {
+  "desc": "probe: fuel level (expect unsupported on Polo)",
+  "answered": true,
+  "raw": [
+   ""
+  ]
+ },
+ "03": {
+  "desc": "stored (confirmed) DTCs",
+  "answered": true,
+  "raw": [
+   "4300"
+  ]
+ },
+ "07": {
+  "desc": "pending DTCs",
+  "answered": true,
+  "raw": [
+   "4700"
+  ]
+ },
+ "0A": {
+  "desc": "permanent DTCs (expect 7F0A11 / NO DATA on EOBD)",
+  "answered": true,
+  "raw": [
+   "4700"
+  ]
+ },
+ "0900": {
+  "desc": "mode09 supported INFOTYPEs",
+  "answered": true,
+  "raw": [
+   "490054400000"
+  ]
+ },
+ "0902": {
+  "desc": "VIN (multi-frame)",
+  "answered": true,
+  "raw": [
+   "0:4902015756571:5A5A5A314B5A412:57353535353535"
+  ]
+ },
+ "090A": {
+  "desc": "ECU name (multi-frame)",
+  "answered": true,
+  "raw": [
+   "0:490A0145434D1:002D456E67696E2:65436F6E74726F3:6C0000AAAAAAAA"
+  ]
+ },
+ "0600": {
+  "desc": "mode06 supported OBDMIDs probe",
+  "answered": true,
+  "raw": [
+   "460080000001"
+  ]
+ },
+ "0601": {
+  "desc": "mode06 O2 sensor B1S1 test results",
+  "answered": true,
+  "raw": [
+   "0:4601C530814A1:5C29D5C3AAAAAA"
+  ]
+ },
+ "0621": {
+  "desc": "mode06 catalyst/DOC monitor",
+  "answered": true,
+  "raw": [
+   ""
+  ]
+ },
+ "0631": {
+  "desc": "mode06 EGR monitor",
+  "answered": true,
+  "raw": [
+   "0:4631C082FFF31:FFA600A0AAAAAA"
+  ]
+ },
+ "0681": {
+  "desc": "mode06 zero-fuel calibration (diesel)",
+  "answered": true,
+  "raw": [
+   ""
+  ]
+ },
+ "0685": {
+  "desc": "mode06 boost pressure control",
+  "answered": true,
+  "raw": [
+   "0:4685C1FC018C1:80000FA085C2FC2:FA4DF4487FFFAA"
+  ]
+ },
+ "06B2": {
+  "desc": "mode06 DPF/PM trap efficiency",
+  "answered": true,
+  "raw": [
+   ""
+  ]
+ }
+}
