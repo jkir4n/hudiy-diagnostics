@@ -5,9 +5,11 @@
 
 ## What must be scrubbed before a public push
 
-### 1. Machine-specific network identity (2 spots)
+### 1. Machine-specific network identity (2 real spots + this doc)
 - `AGENTS.md` line ~18: `car@<PI-IP>` (real Tailscale IP)
 - `tools/README.md` line ~26: same IP
+- This gate doc itself quotes the IP for reference — it is scrubbed/excluded the
+  same way (a public copy of this file must not contain it either).
 
 Replace with a placeholder like `car@<PI-IP>` or a documentation-only note.
 
@@ -30,8 +32,10 @@ synthetic ground-truth:
 Scrub recipe: use a synthetic VIN (e.g. `WVWZZZ1KZAW555555`), recompute the
 `0902` multi-frame hex in the raw fixtures, and update the CALID/CVN to dummy
 values consistently across raw + decoded fixtures, docs, and test asserts.
-Then re-run `python3 -m unittest discover -s backend/tests` (must stay 41/41)
-and re-run the replay-mode server smoke test.
+Then re-run `python3 -m unittest discover -s backend/tests` (must stay 61/61 —
+the frontend slice added 20 endpoint/static-serving tests to the original 41)
+and re-run the replay-mode server smoke test (`/app/diag.html`, `/app/diag.js`,
+`/app/diag.css` + `/health`).
 
 ### 3. Optional, lower sensitivity
 - `~/...` Pi paths and `<projects-folder>\Hudiy Diagnostics` / "the dev workstation" mentions
