@@ -69,6 +69,18 @@ All notable changes. Format: date — phase — what.
 - `scan.py` reported link-lifetime totals as per-scan traffic. `scan.queries/timeouts/retries/failures` are now deltas measured across the scan — on a long-lived service the old numbers grew with every scan and read as if one scan had sent them.
 - `scan.py` called `decoders.summarize_codes()` with the flat stored/pending/permanent code lists instead of the decoded `dtc_list()` mappings it buckets on; and with no fault phase run it no longer fabricates a "0 codes, clear" summary (it passes `None`, which degrades the verdict to unknown rather than falsely reporting the car as ready).
 
+## 2026-09-10 — Phase 2c (backend + frontend): the Hudiy control lane (overlay show/hide)
+
+### Added
+- `backend/diag/hudiy_control.py` — a Hudiy TCP API client (stdlib `socket` + `struct`, protobuf only for the messages) that owns our slot on `127.0.0.1:44405`: `MESSAGE_HELLO_REQUEST` (name `HudiyDiagnostics`, API 1.3) then `MESSAGE_REGISTER_ACTION_REQUEST` for our menu action, both on the *same* session, answered by a daemon thread that also keeps `MESSAGE_PING` alive. When Hudiy dispatches *our* action it re-asserts the overlay by sending `SetCustomOverlayVisibility` on every dispatch (Hudiy never re-shows a custom overlay on its own); another app's action is counted as ignored, never acted on. Happy path never touches this lane.
+- `POST /ui/hide` in `backend/server.py` — the page's Exit path. It reports `ok` ("the request was handled") separately from `sent` ("Hudiy actually got the message"), so a dead control link cannot read as a failed request; `/health` grew a `hudiy` block (state, `registered`, `sessions`, `dispatches`, `last_visibility`, `reason`) and `cfg.hudiy_control_enabled` / `--no-hudiy-control` turn the lane off.
+- `frontend/diag.js` — the exit path: a footer **Exit** button (S0) and **Back on S0** both `POST /ui/hide`, then add `body.exited` and detach our own DOM, so the car shows through even if the ask never lands (a 400 ms timer is the belt). Hudiy provides no close of its own, so this is the only way out of a custom overlay.
+- `backend/tests/test_hudiy_control.py` — 25 tests: a fake Hudiy speaking the real wire framing over a loopback socket (hello-before-register ordering, refused hello/registration retried and loud, show-on-dispatch ×3, foreign action ignored, hide sends `NONE`, reconnect + re-register after a drop), degradation with no `Api_pb2` (`state: unavailable`, `start()` false, no false claim of hiding), `locate_api_file` resolution, and two compatibility tests that load the box's real `Api_pb2.py` (skipped when absent, run via `DIAG_HUDIY_API_PB2`).
+
+### Notes
+- The control lane is discovered, never assumed: `Api_pb2` is located at runtime (`DIAG_HUDIY_API_PB2`, then `~/.local/share/hudiy-diagnostics`, `/opt/hudiy-diag`, `/opt/hudiy-obd-charts`). With no module the lane stays `unavailable` and logs why — the app still serves `/health` and every read-only endpoint. Nothing autolaunches; the lane starts with the app and reconnects with 2.0 s → ×1.5 → 30 s capped backoff plus 0.1–1.0 s jitter.
+- Suite now 86/86 (61 + 25). With Hudiy's real `Api_pb2.py` importable the two real-API tests run against the actual generated module instead of skipping; `docs/GITHUB_PUBLISH_PRIVACY_GATE.md` test-floor line updated to match.
+
 ## 2026-09-10 — Phase 2b (frontend): the diag overlay page S0–S8
 
 ### Added

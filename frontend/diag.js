@@ -1092,6 +1092,8 @@
       plan.push(button(S.scan ? 'Scan again' : 'Start health scan', 'btn-primary', startScan));
       if (S.scan) { plan.push(button('Open report', '', function () { go('S8'); loadReport(); })); }
       if (S.scan) { plan.push(button('Health summary', '', function () { go('S2'); })); }
+      plan.push(el('span', 'grow'));
+      plan.push(button('Exit', '', exitOverlay));
     } else if (S.screen === 'S1') {
       // Cancel must be live exactly while a scan is in flight - it is the only
       // way out of S1 (the footer button is the sole cancel affordance).
@@ -1218,9 +1220,40 @@
   }
 
   function back() {
-    if (S.screen === 'S0') { return false; }
+    // At the home screen Back means "leave": hide the overlay (Hudiy provides no
+    // close of its own, so this is the only exit from a custom overlay).
+    if (S.screen === 'S0') { return exitOverlay(); }
     var target = PARENT[S.screen] || 'S0';
     return go(target);
+  }
+
+  /* --------------------------------------------------------- leaving the app */
+
+  // A Hudiy custom overlay stays up until its client hides it - the page can
+  // never close itself. The backend owns the control lane (it registered the
+  // menu action), so we ask it to hide us, then tear our own DOM down so the
+  // car shows through even if the ask never landed.
+  var leaving = false;
+
+  function exitOverlay() {
+    if (leaving) { return true; }
+    leaving = true;
+    stopPolling();
+    try {
+      fetch('/ui/hide', { method: 'POST', cache: 'no-store', headers: { 'Accept': 'application/json' } })
+        .catch(function () { /* the overlay must drop even with the backend down */ })
+        .then(hideOwnDom);
+    } catch (err) { hideOwnDom(); }
+    window.setTimeout(hideOwnDom, 400);  // belt: never hang on a stuck fetch
+    return true;
+  }
+
+  function hideOwnDom() {
+    document.body.classList.add('exited');
+    var app = $('app');
+    if (app) { app.hidden = true; }
+    var toast = $('toast');
+    if (toast) { toast.hidden = true; }
   }
 
   /* ------------------------------------------------------- input: bridge */

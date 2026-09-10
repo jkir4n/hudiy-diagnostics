@@ -28,6 +28,12 @@ Endpoints (``/diag/<name>`` is accepted as an alias of every one of them, and
 ``GET /report?format=``    text (default), csv or json rendering of the report
 ``GET /dtc?code=&maker=``  DTC text lookup (generic + maker-specific)
 ``GET /vin?vin=&online=``  offline VIN decode, optional bounded online enrich
+``POST /ui/hide``          hide our own overlay (the page's Exit path)
+
+The one write endpoint is the UI's own Exit: closing a Hudiy custom overlay is
+a *control* action on Hudiy, so it is a POST to ``/ui/hide``. It changes
+nothing on the car and never fails the request because the control link is
+down - it answers ``200`` with ``sent: false`` and a reason instead.
 """
 
 from __future__ import annotations
@@ -73,6 +79,7 @@ from backend.diag import config as config_mod  # noqa: E402
 from backend.diag import dtc as dtc_mod  # noqa: E402
 from backend.diag import fixtures as fixtures_mod  # noqa: E402
 from backend.diag import hosts as hosts_mod  # noqa: E402
+from backend.diag import hudiy_control as hudiy_mod  # noqa: E402
 from backend.diag import lane as lane_mod  # noqa: E402
 from backend.diag import report as report_mod  # noqa: E402
 from backend.diag import scan as scan_mod  # noqa: E402
@@ -169,7 +176,7 @@ class DiagService:
 
     def __init__(self, cfg: Optional[config_mod.Config] = None, *,
                  host=None, link=None, engine=None, store=None,
-                 host_factory=None, clock=time.time) -> None:
+                 hudiy=None, host_factory=None, clock=time.time) -> None:
         self.cfg = cfg or config_mod.load_config()
         self._clock = clock
         self._started = clock()
@@ -185,6 +192,12 @@ class DiagService:
         self.fixture_source: Optional[str] = None
         self.fixture_commands: Optional[int] = None
         self.last_scan: Optional[dict] = None
+        # The control lane is independent of the OBD lane: it registers our menu
+        # action with Hudiy and drives the overlay. Injection exists so tests can
+        # run without Hudiy and without the generated Api_pb2.
+        self.hudiy = hudiy
+        if self.hudiy is None and getattr(self.cfg, "hudiy_control_enabled", True):
+            self.hudiy = hudiy_mod.HudiyControl(self.cfg)
 
     # --- session ------------------------------------------------------------
 
@@ -292,6 +305,7 @@ class DiagService:
             "uptime_s": uptime,
             "http": {"host": self.cfg.http_host, "port": self.cfg.http_port},
             "obd": self.obd_state(),
+            "hudiy": self.hudiy_status(),
             "dtc_db": self.store_status(),
             "scan": {
                 "running": bool(getattr(engine, "running", False)),
@@ -307,6 +321,83 @@ class DiagService:
         if self.store is None:
             return {"available": False, "reason": "no DTC store", "rows": []}
         return self.store.status()
+
+    # --- Hudiy control lane -------------------------------------------------
+
+    def hudiy_status(self) -> dict:
+        """State of the menu-action/overlay lane - not the car's state.
+
+        Kept separate from ``obd`` on purpose: the car can be asleep while the
+        menu still opens this app, and the app can be unable to reach Hudiy
+        while the car answers fine. ``state`` is always one of
+        online/connecting/offline/unavailable/disabled.
+        """
+        if self.hudiy is None:
+            return {"enabled": False, "available": False, "state": "disabled",
+                    "degraded": True, "reason": "DIAG_HUDIY_CONTROL=0",
+                    "hello_name": hudiy_mod.HELLO_NAME,
+                    "action": hudiy_mod.ACTION_SHOW,
+                    "identifier": hudiy_mod.OVERLAY_IDENTIFIER}
+        try:
+            status = dict(self.hudiy.status())
+        except Exception as exc:  # pragma: no cover - status() is defensive
+            return {"enabled": True, "available": False, "state": "unavailable",
+                    "degraded": True,
+                    "reason": "%s: %s" % (type(exc).__name__, exc)}
+        status["enabled"] = True
+        return status
+
+    def start_control(self) -> bool:
+        """Bring up the control lane (menu action + overlay). Idempotent.
+
+        Never raises and never blocks the HTTP listener: an install without
+        Api_pb2 keeps serving and reports the miss through ``/health``.
+        """
+        if self.hudiy is None:
+            log.info("Hudiy control lane disabled by configuration "
+                     "(DIAG_HUDIY_CONTROL=0)")
+            return False
+        try:
+            started = bool(self.hudiy.start())
+        except Exception as exc:
+            log.error("could not start the Hudiy control lane: %s: %s",
+                      type(exc).__name__, exc)
+            return False
+        if not started:
+            log.error("Hudiy control lane NOT started: %s",
+                      self.hudiy_status().get("reason"))
+        return started
+
+    def stop_control(self) -> None:
+        """Stop the control lane (best effort, never raises)."""
+        if self.hudiy is None:
+            return
+        try:
+            self.hudiy.stop()
+        except Exception as exc:  # pragma: no cover - exit path
+            log.warning("error stopping the Hudiy control lane: %s", exc)
+
+    def ui_hide(self) -> dict:
+        """Hide our own overlay - the page's Exit path (``POST /ui/hide``).
+
+        ``ok`` says "the request was handled"; ``sent`` says whether Hudiy
+        actually got the message. The page hides itself either way, so a dead
+        control link must not look like a failed request.
+        """
+        if self.hudiy is None:
+            return {"ok": True, "status": STATUS_OK, "sent": False,
+                    "reason": "the Hudiy control lane is disabled",
+                    "hudiy": self.hudiy_status()}
+        sent = bool(self.hudiy.hide_overlay())
+        status = self.hudiy_status()
+        return {
+            "ok": True,
+            "status": STATUS_OK,
+            "sent": sent,
+            "reason": None if sent else (status.get("reason")
+                                         or "the Hudiy control link is not up"),
+            "hudiy": status,
+        }
 
     def scan(self, sections=None) -> dict:
         """Run a scan (or reuse the running one's outcome) and describe it."""
@@ -454,6 +545,7 @@ class DiagService:
                 "/report": "rendered report (?format=text|csv|json)",
                 "/dtc": "DTC text lookup (?code=P0401&maker=volkswagen)",
                 "/vin": "VIN decode (?vin=...&online=0|1)",
+                "POST /ui/hide": "hide our own Hudiy overlay (the Exit button)",
             },
             "aliases": "/diag/<name> and /diag/status + /diag/report.txt work too",
         }
@@ -463,7 +555,7 @@ class DiagService:
     def handle(self, method: str, path: str, query: Optional[dict] = None) -> Response:
         """Turn one request into a response. Never raises for a car problem."""
         query = query or {}
-        if method not in ("GET", "HEAD"):
+        if method not in ("GET", "HEAD", "POST"):
             raise ServiceError("%s is not supported (read-only service)" % method,
                                status_code=405)
         # The overlay page is static: served before route normalisation so that
@@ -471,6 +563,17 @@ class DiagService:
         if path == "/app" or path.startswith("/app/"):
             return _static_response(path[4:] if path.startswith("/app/") else "")
         target, forced_format = _normalize_path(path)
+        if target.startswith("/ui/"):
+            if method != "POST":
+                raise ServiceError("%s /ui/* is not supported (use POST)" % method,
+                                   status_code=405)
+            if target == "/ui/hide":
+                return json_response(self.ui_hide())
+            raise NotFound("no UI endpoint %r (see / for the list)" % path)
+        if method == "POST":
+            # Only the UI's own control endpoints accept a body; everything else
+            # stays read-only, and a POST must never look like a scan trigger.
+            raise ServiceError("POST is only supported on /ui/*", status_code=405)
         try:
             if target == "/health":
                 return json_response(self.health())
@@ -612,6 +715,23 @@ class DiagRequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self._serve("HEAD")
 
+    def do_POST(self) -> None:
+        """Only the UI's own control endpoints (e.g. ``POST /ui/hide``)."""
+        self._drain_body()
+        self._serve("POST")
+
+    def _drain_body(self) -> None:
+        """Consume the request body so HTTP/1.1 keep-alive stays in sync."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            length = 0
+        if length > 0:
+            try:
+                self.rfile.read(length)
+            except OSError:  # pragma: no cover - client vanished
+                pass
+
     def _serve(self, method: str) -> None:
         started = time.monotonic()
         try:
@@ -695,6 +815,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--replay-fixtures",
                         help="fixture file or directory for replay mode")
     parser.add_argument("--log-level", help="DEBUG|INFO|WARNING|ERROR")
+    parser.add_argument("--no-hudiy-control", action="store_true",
+                        help="do not register the menu action / drive the overlay")
     parser.add_argument("--version", action="store_true",
                         help="print the version and exit")
     return parser.parse_args(argv)
@@ -714,11 +836,16 @@ def main(argv=None) -> int:
         cfg.mode = args.mode
     if args.replay_fixtures:
         cfg.replay_fixture = args.replay_fixtures
+    if args.no_hudiy_control:
+        cfg.hudiy_control_enabled = False
     logging.basicConfig(
         level=getattr(logging, (args.log_level or cfg.log_level).upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     _warn_if_exposed(cfg.http_host)
     server, service = create_server(cfg)
+    # The control lane listens on Hudiy's TCP API; it is what makes the menu
+    # entry work at all, and its state is reported under /health -> "hudiy".
+    service.start_control()
     log.info("%s v%s listening on http://%s:%d (mode=%s)", SERVICE_NAME,
              diag_version, cfg.http_host, cfg.http_port, cfg.normalized_mode())
     try:
@@ -726,6 +853,7 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         log.info("shutting down")
     finally:
+        service.stop_control()
         server.server_close()
         if service.store is not None:
             try:

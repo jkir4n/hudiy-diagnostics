@@ -32,8 +32,10 @@ synthetic ground-truth:
 Scrub recipe: use a synthetic VIN (e.g. `WVWZZZ1KZAW555555`), recompute the
 `0902` multi-frame hex in the raw fixtures, and update the CALID/CVN to dummy
 values consistently across raw + decoded fixtures, docs, and test asserts.
-Then re-run `python3 -m unittest discover -s backend/tests` (must stay 61/61 —
-the frontend slice added 20 endpoint/static-serving tests to the original 41)
+Then re-run `python3 -m unittest discover -s backend/tests` (must stay 86/86 —
+the frontend slice added 20 endpoint/static-serving tests to the original 41,
+and the control lane added 25 more; with Hudiy's real `Api_pb2.py` reachable
+via `DIAG_HUDIY_API_PB2` the two real-API tests run instead of skipping)
 and re-run the replay-mode server smoke test (`/app/diag.html`, `/app/diag.js`,
 `/app/diag.css` + `/health`).
 

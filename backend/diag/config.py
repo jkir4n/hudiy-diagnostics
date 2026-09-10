@@ -239,6 +239,31 @@ class Config:
         default_factory=lambda: _env_float("DIAG_VIN_DECODE_TIMEOUT_S", 6.0)
     )
 
+    # --- Hudiy control lane (menu action + overlay) -----------------------
+    #: Register ``diag_show`` with Hudiy and drive the overlay. Set to false on
+    #: an install where something else owns the menu entry.
+    hudiy_control_enabled: bool = field(
+        default_factory=lambda: _env_bool("DIAG_HUDIY_CONTROL", True)
+    )
+    #: Hudiy's generated ``Api_pb2.py``: either the file or the directory that
+    #: holds it (directly or under ``common/``). Empty = search the defaults
+    #: (``~/.local/share/hudiy-diagnostics``, ``/opt/hudiy-diag``,
+    #: ``/opt/hudiy-obd-charts``) - the listener stays up and reports the miss.
+    hudiy_api_path: str = field(default_factory=lambda: _env_str("DIAG_HUDIY_API_PB2", ""))
+    #: Only bounds how often the reader wakes up to notice a stop, so a long
+    #: value is harmless: Hudiy is legitimately silent between messages.
+    hudiy_control_timeout_s: float = field(
+        default_factory=lambda: _env_float("DIAG_HUDIY_CONTROL_TIMEOUT_S", 30.0)
+    )
+    #: Reconnect backoff: start here, x1.5 per failed attempt, cap at max, plus
+    #: 0.1-1.0 s of jitter so two control clients never retry in lockstep.
+    hudiy_control_backoff_s: float = field(
+        default_factory=lambda: _env_float("DIAG_HUDIY_CONTROL_BACKOFF_S", 2.0)
+    )
+    hudiy_control_backoff_max_s: float = field(
+        default_factory=lambda: _env_float("DIAG_HUDIY_CONTROL_BACKOFF_MAX_S", 30.0)
+    )
+
     # --- Logging ----------------------------------------------------------
     log_level: str = field(default_factory=lambda: _env_str("DIAG_LOG_LEVEL", "INFO"))
 
@@ -260,6 +285,14 @@ class Config:
             self.query_spacing_s = 0.0
         if self.mode06_max_mids < 1:
             self.mode06_max_mids = 1
+        # Control lane: a sub-second read timeout would spin, and a max backoff
+        # below the initial one would make the schedule non-monotonic.
+        if self.hudiy_control_timeout_s < 1.0:
+            self.hudiy_control_timeout_s = 1.0
+        if self.hudiy_control_backoff_s < 0.25:
+            self.hudiy_control_backoff_s = 0.25
+        if self.hudiy_control_backoff_max_s < self.hudiy_control_backoff_s:
+            self.hudiy_control_backoff_max_s = self.hudiy_control_backoff_s
 
 
 def load_config() -> Config:

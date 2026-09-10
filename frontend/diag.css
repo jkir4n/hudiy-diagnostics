@@ -432,3 +432,11 @@ body:not(.kb) .ctl:focus { outline: none; }
 }
 .toast[data-sev="bad"] { border-color: rgba(213, 94, 0, .6); }
 .toast[data-sev="warn"] { border-color: rgba(230, 159, 0, .6); }
+
+/* ----------------------------------------------------------------- exit */
+
+/* Leaving: the overlay is hidden by the backend control lane, so the page only
+ * has to get out of the way. It stays painted (not display:none) for one short
+ * fade so the transition to the car's own UI is not a hard cut. */
+body.exited #app { opacity: 0; pointer-events: none; transition: opacity .18s ease-out; }
+body.exited, body.exited * { cursor: default; }
