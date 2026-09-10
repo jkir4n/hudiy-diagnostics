@@ -1,0 +1,31 @@
+[Unit]
+# Hudiy Diagnostics - HTTP lane for the car-diagnostics app.
+# INSTALL: these are USER units (no root, matching the race-dash units on the
+# reference Hudiy). backend/deploy/install.sh copies the repo here and enables
+# this unit; nothing in the file is machine-specific (%h is the installing
+# user's home, so the same file is correct on any Hudiy instance).
+Description=Hudiy Diagnostics HTTP lane (OBD diagnostics, 127.0.0.1)
+Documentation=file://%h/.local/share/hudiy-diagnostics/backend/README.md
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/hudiy-diagnostics
+# Optional per-instance overrides (DIAG_MODE, DIAG_HTTP_PORT, bridge URL, ...).
+# Absent is fine: the "=" makes the file optional.
+EnvironmentFile=-%h/.config/hudiy-diagnostics/env
+# Loopback only. Widening the bind exposes vehicle data with no authentication;
+# do it in the env file above, deliberately.
+Environment=DIAG_HTTP_HOST=127.0.0.1
+Environment=DIAG_HTTP_PORT=44414
+ExecStart=/usr/bin/env python3 -m backend.server
+# A wedged ELM link must not stay down: the lane is stateless, so restarting is
+# always safe (no scan survives a restart; the UI polls /health regardless).
+Restart=on-failure
+RestartSec=5
+# Diagnostics must never be able to take the dashboard or the Pi down with it.
+MemoryMax=256M
+Nice=5
+
+[Install]
+WantedBy=default.target
