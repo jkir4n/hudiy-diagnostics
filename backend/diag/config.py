@@ -62,6 +62,15 @@ def _default_dtc_db() -> Path:
     return candidates[0]
 
 
+def _default_report_dir() -> Path:
+    """Reports are runtime state, so they live next to the package, not in it."""
+    here = Path(__file__).resolve().parent
+    for base in (here.parent, here.parent.parent):
+        if (base / "diag").is_dir() or base.name == "backend":
+            return base / "var" / "reports"
+    return Path("/tmp/hudiy-diag-reports")
+
+
 #: Modes the lane can run in.
 MODE_AUTO = "auto"
 MODE_PROXY = "proxy"
@@ -137,6 +146,27 @@ class Config:
     charts_probe_timeout_s: float = field(
         default_factory=lambda: _env_float("DIAG_CHARTS_PROBE_TIMEOUT_S", 2.0)
     )
+    #: Proxy lane: where the charts process exposes its OBD bridge. The charts
+    #: process is the ONE process Hudiy serves OBD to (ARCHITECTURE_NOTES.md,
+    #: DEF CONSTRAINT), so our queries travel through this URL instead of
+    #: opening a second Hudiy connection that would be silently starved.
+    charts_bridge_url: str = field(
+        default_factory=lambda: _env_str(
+            "DIAG_CHARTS_BRIDGE_URL", "http://127.0.0.1:44412/diag/obd"
+        )
+    )
+    #: Optional shared secret for the bridge. Both ends are loopback-only, so
+    #: this is defence in depth, not an authentication boundary.
+    bridge_token: str = field(default_factory=lambda: _env_str("DIAG_BRIDGE_TOKEN", ""))
+    #: Every bridged query costs the charts poller its turn, so the bridged
+    #: request budget is deliberately tighter than a local one.
+    bridge_timeout_s: float = field(
+        default_factory=lambda: _env_float("DIAG_BRIDGE_TIMEOUT_S", 15.0)
+    )
+    #: Where exported reports are written when a client asks for a file.
+    report_dir: Path = field(
+        default_factory=lambda: Path(_env_str("DIAG_REPORT_DIR", str(_default_report_dir())))
+    )
 
     #: Per-query timeout. V1_SPEC caps it at 15 s.
     query_timeout_s: float = field(default_factory=lambda: _env_float("DIAG_QUERY_TIMEOUT_S", 15.0))
@@ -182,6 +212,8 @@ class Config:
     # --- DTC / VIN --------------------------------------------------------
     dtc_db_path: Path = field(default_factory=lambda: Path(_env_str("DIAG_DTC_DB", str(_default_dtc_db()))))
     dtc_default_maker: str = field(default_factory=lambda: _env_str("DIAG_DTC_DEFAULT_MAKER", ""))
+    dtc_lookup_enabled: bool = field(default_factory=lambda: _env_bool("DIAG_DTC_LOOKUP", True))
+    dtc_locale: str = field(default_factory=lambda: _env_str("DIAG_DTC_LOCALE", "en"))
     vin_decode_enabled: bool = field(default_factory=lambda: _env_bool("DIAG_VIN_DECODE", True))
     vin_decode_url: str = field(
         default_factory=lambda: _env_str(

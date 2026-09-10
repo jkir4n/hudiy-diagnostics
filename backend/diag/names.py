@@ -307,6 +307,55 @@ def nrc_name(nrc):
 
 
 # --------------------------------------------------------------------------
+# PID 0x1C - "OBD standards this vehicle conforms to" (SAE J1979 / ISO 15031-5)
+# --------------------------------------------------------------------------
+
+OBD_STANDARDS = {
+    1: "OBD-II as defined by CARB",
+    2: "OBD as defined by the EPA",
+    3: "OBD and OBD-II",
+    4: "OBD-I",
+    5: "Not OBD compliant",
+    6: "EOBD",
+    7: "EOBD and OBD-II",
+    8: "EOBD and OBD",
+    9: "EOBD, OBD and OBD-II",
+    10: "JOBD",
+    11: "JOBD and OBD-II",
+    12: "JOBD and EOBD",
+    13: "JOBD, EOBD and OBD-II",
+    14: "Engine Manufacturer Diagnostics (EMD)",
+    15: "EMD Plus",
+    16: "Heavy-Duty OBD (HD OBD-C)",
+    17: "HD OBD",
+    18: "WWH OBD",
+    19: "HD EOBD-I",
+    20: "HD EOBD-I N",
+    21: "HD EOBD-II",
+    22: "HD EOBD-II N",
+    23: "Euro OBD stage VI",
+    24: "Euro OBD stage VI (with NOx monitor)",
+    25: "Euro OBD stage VI (with PM monitor)",
+}
+
+
+def obd_standard_name(code):
+    """Human name for the PID 0x1C standards byte.
+
+    Returns None when the byte is absent or out of the known range, so callers
+    render "unknown" instead of inventing a standard.
+    """
+    if code is None:
+        return None
+    if isinstance(code, (bytes, bytearray)):
+        code = int.from_bytes(bytes(code), "big")
+    if not isinstance(code, int):
+        return None
+    return OBD_STANDARDS.get(code) or ("Standard byte 0x%02X (not in the J1979 table)" % code
+                                       if code else None)
+
+
+# --------------------------------------------------------------------------
 # Service (mode) names, used in reports and error messages.
 # --------------------------------------------------------------------------
 

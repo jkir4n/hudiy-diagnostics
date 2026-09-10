@@ -26,6 +26,7 @@ import uuid
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
 from . import config, decoders, names, verdict
+from . import vin as vin_util
 from .lane import STATE_SCANNING, DiagLink, HostAdapter, QueryResult
 
 #: Fault-query command -> report key.
@@ -62,7 +63,7 @@ READINESS_COMMANDS: Sequence[tuple] = (
 #: are ever queried; anything missing is reported as unsupported, not as an
 #: error. This is a *reading list*, not a capability claim.
 LIVE_PIDS: Sequence[int] = (
-    0x04, 0x05, 0x0B, 0x0C, 0x0F, 0x10, 0x11, 0x1F, 0x21, 0x23, 0x2F,
+    0x04, 0x05, 0x0B, 0x0C, 0x0F, 0x10, 0x11, 0x1C, 0x1F, 0x21, 0x23, 0x2F,
     0x30, 0x31, 0x33, 0x3C, 0x42, 0x51, 0x5C,
 )
 
@@ -103,6 +104,8 @@ class ScanEngine:
         self.abort_reason: Optional[str] = None
         self.running = False
         self.report: Optional[dict] = None
+        self.resolved_mode: Optional[str] = None
+        self._vin: Optional[str] = None
 
     # --- event plumbing ------------------------------------------------------
     def subscribe(self, listener: Callable[[dict], None]) -> Callable[[], None]:
@@ -139,8 +142,9 @@ class ScanEngine:
                 pass
 
     # --- one query, recorded ------------------------------------------------
-    def ask(self, command: str, label: str, timeout: Optional[float] = None) -> QueryResult:
-        result = self.link.query(command, timeout=timeout)
+    def ask(self, command: str, label: str, timeout: Optional[float] = None,
+            retries: Optional[int] = None) -> QueryResult:
+        result = self.link.query(command, timeout=timeout, retries=retries)
         step = result.to_dict()
         step.update({"label": label, "at": self.clock()})
         self.steps.append(step)
@@ -209,7 +213,7 @@ class ScanEngine:
             "id": self.scan_id,
             "started_at": self.started_at,
             "host": getattr(self.link.host, "name", "unknown"),
-            "mode": self.cfg.normalized_mode(),
+            "mode": self.resolved_mode or self.cfg.normalized_mode(),
             "spacing_s": self.cfg.query_spacing_s,
             "timeout_s": self.cfg.query_timeout_s,
         }
@@ -238,20 +242,20 @@ class ScanEngine:
                 if data.get("ok"):
                     base = int(command[2:], 16)
                     support["bitmaps"][command] = data.get("bitmap_hex")
-                    for pid in data.get("supported") or []:
+                    for pid in data.get("pids") or []:
                         supported_pids.add(pid)
-                    support["pids"]["01%02X" % base] = data.get("supported") or []
+                    support["pids"]["01%02X" % base] = data.get("pids") or []
             elif command.startswith("06"):
                 data = decoders.monitor_test_bitmap(decoded)
                 entry = data
                 if data.get("ok"):
                     base = int(command[2:], 16)
                     support["bitmaps"][command] = data.get("bitmap_hex")
-                    support["obdmid"]["06%02X" % base] = data.get("supported") or []
+                    support["obdmid"]["06%02X" % base] = data.get("obdmids") or []
             elif command.startswith("09"):
                 data = decoders.info_types(decoded)
                 entry = data
-                support["infotypes"] = data.get("supported") or []
+                support["infotypes"] = data.get("infotypes") or []
             elif command.startswith("02"):
                 data = {"raw": decoded.payload.hex().upper(),
                         "supported_hint": decoded.status}
@@ -306,7 +310,7 @@ class ScanEngine:
             else:
                 cycle_monitor = data
         if monitor and monitor.get("ok"):
-            codes["mil"] = monitor.get("mil")
+            codes["mil"] = monitor.get("mil_on")
             codes["dtc_count"] = monitor.get("dtc_count")
         report["monitors"] = {"since_clear": monitor, "this_cycle": cycle_monitor}
 
@@ -318,10 +322,12 @@ class ScanEngine:
         for command, label, guarded in IDENTITY_COMMANDS:
             if self._expired():
                 break
-            if self.cfg.vin_decode_enabled is False and command == "0902":
-                pass
+            # 0904/0906 are multi-frame and are attempted once without a
+            # retry ("guarded" in V1_SPEC): a second multi-frame read is the
+            # cheapest way to starve the served client.
             result = self.ask(command, label,
-                              timeout=self.cfg.query_timeout_s * (1.0 if not guarded else 1.0))
+                              timeout=self.cfg.query_timeout_s,
+                              retries=0 if guarded else None)
             if self._should_abort(result) or self._expired():
                 break
             data = decoders.vehicle_info(result.decoded)
@@ -348,6 +354,7 @@ class ScanEngine:
         summary = decoders.summarize_codes([codes["stored"], codes["pending"],
                                             codes["permanent"]])
         codes["summary"] = summary
+        self._vin = (identity.get("0902") or {}).get("value")
         enriched = self._enrich_codes(codes, identity)
         report["codes"] = enriched
         readiness = verdict.evaluate_readiness(
@@ -360,6 +367,7 @@ class ScanEngine:
         report["vehicle"] = vehicle
 
         scan_meta.update({
+            "step_log": list(self.steps),
             "queries": self.link.queries,
             "timeouts": self.link.timeouts,
             "retries": self.link.retries,
@@ -420,7 +428,9 @@ class ScanEngine:
             data["summary"] = {
                 "tests": len(entries),
                 "outside_limits": len(failed),
-                "ambiguous": bool(data.get("ambiguous")),
+                "ambiguous": bool(data.get("layout_ambiguous")),
+                "ambiguous_note": data.get("parse_note") or "",
+                "residual_hex": data.get("residual_hex") or "",
             }
             results.append(data)
         return results
@@ -433,7 +443,9 @@ class ScanEngine:
                     code.setdefault("lookup", {"available": False,
                                                "reason": "no DTC database loaded"})
             return codes
-        maker = self.cfg.dtc_default_maker or None
+        maker = (self.cfg.dtc_default_maker
+                 or vin_util.maker_from_vin(self._vin)
+                 or None)
         for key in ("stored", "pending", "permanent"):
             for code in codes.get(key) or []:
                 try:
@@ -444,15 +456,16 @@ class ScanEngine:
 
     # --- vehicle block ------------------------------------------------------
     def _vehicle(self, identity: dict, supported_pids: set) -> dict:
-        vin = ((identity.get("0902") or {}).get("ascii")
-               or (identity.get("0902") or {}).get("value"))
-        calid = (identity.get("0904") or {}).get("ascii") or \
-            (identity.get("0904") or {}).get("value")
+        vin = _identity_text(identity, "0902")
+        calid = _identity_text(identity, "0904")
         cvn = (identity.get("0906") or {}).get("value")
-        ecu_name = (identity.get("090A") or {}).get("ascii") or \
-            (identity.get("090A") or {}).get("value")
-        standard = None
-        decoded_live = {}
+        ecu_name = _identity_text(identity, "090A")
+        standards = (identity.get("01%02X" % 0x1C) or {})
+        standard_code = standards.get("raw")
+        standard = {"code": standard_code,
+                    "name": names.obd_standard_name(standard_code),
+                    "raw_hex": standards.get("raw_hex")}
+        decoded_live = standards
         return {
             "vin": vin,
             "calid": calid,
@@ -461,10 +474,28 @@ class ScanEngine:
             "obd_standard": standard,
             "raw_identity": identity,
             "pid_01C": decoded_live,
+            "vin_17_chars": len(vin or "") == 17,
             "logs_available": {
                 "stored_dtc_count": 0x01 in supported_pids,
             },
         }
+
+
+def _identity_text(identity: dict, command: str) -> Optional[str]:
+    """Pull the printable value of a Mode 09 response.
+
+    ``decoders.vehicle_info`` puts the text under ``detail`` for the ASCII
+    infotypes, so read the detail first and only then the flat value - reading
+    ``ascii`` off the top level (as an earlier revision did) always came back
+    empty, which is why the report had a null VIN even on a car that answers
+    ``0902``.
+    """
+    entry = identity.get(command) or {}
+    detail = entry.get("detail") or {}
+    text = detail.get("ascii") or entry.get("value")
+    if isinstance(text, str):
+        text = text.strip()
+    return text or None
 
 
 def scan_to_events(report: dict) -> Iterable[dict]:

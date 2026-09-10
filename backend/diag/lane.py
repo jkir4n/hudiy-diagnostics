@@ -161,17 +161,25 @@ class DiagLink:
         }
 
     # --- the one query path -------------------------------------------------
-    def query(self, command: str, timeout: Optional[float] = None) -> QueryResult:
-        """Run one command, single-flight, with at most one retry."""
+    def query(self, command: str, timeout: Optional[float] = None,
+              retries: Optional[int] = None) -> QueryResult:
+        """Run one command, single-flight, with at most one retry.
+
+        ``retries`` overrides the configured budget for this call only. A caller
+        that passes 0 gets exactly one attempt - used for the guarded
+        multi-frame identity reads (``0904``/``0906``), where a second
+        multi-frame read is the cheapest way to starve the served client.
+        """
         command = normalize_command(command)
         budget = float(timeout or self.cfg.query_timeout_s)
+        allowance = self.cfg.query_retries if retries is None else retries
         with self._lock:
             self.queries += 1
             attempts = 0
             error: Optional[str] = None
             raw_items: List[str] = []
             started = self._clock()
-            while attempts < (1 + max(0, self.cfg.query_retries)):
+            while attempts < (1 + max(0, allowance)):
                 attempts += 1
                 if attempts > 1:
                     self.retries += 1
