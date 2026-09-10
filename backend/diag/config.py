@@ -170,10 +170,14 @@ class Config:
     report_dir: Path = field(
         default_factory=lambda: Path(_env_str("DIAG_REPORT_DIR", str(_default_report_dir())))
     )
-    #: Fixture used by replay mode: ``{command: {"raw": [...]}}`` (the Phase 1
-    #: capture format, see fixtures/round1_full_capture.json).
+    #: Fixture(s) used by replay mode: ``{command: {"raw": [...]}}`` (the Phase 1
+    #: capture format, see fixtures/round1_full_capture.json). A directory is
+    #: accepted too - see ``diag.fixtures``. ``DIAG_REPLAY_FIXTURES`` (plural)
+    #: is the documented name; the singular spelling still works.
     replay_fixture: str = field(
-        default_factory=lambda: _env_str("DIAG_REPLAY_FIXTURE", "")
+        default_factory=lambda: _env_str(
+            "DIAG_REPLAY_FIXTURES", _env_str("DIAG_REPLAY_FIXTURE", "")
+        )
     )
 
     #: Per-query timeout. V1_SPEC caps it at 15 s.
