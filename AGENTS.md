@@ -1,6 +1,6 @@
 # AGENTS.md — Hudiy Diagnostics
 
-**Last updated:** 2026-09-10 (Phase 1 complete, V1_SPEC ready)
+**Last updated:** 2026-09-11 (Phase 2b: app live on car; wheel/knob shim)
 
 ## 1. What this project is
 A Hudiy **menu-launched** car diagnostics app. Phase 1 = research + captured data only. Backend and frontend are deliberately NOT started (owner's explicit instruction: gather data first, build later).
@@ -35,6 +35,15 @@ Non-negotiable requirements (owner's verbatim constraints):
 - **Negative fixtures are real data:** Mode 0A and Mode 02 (freeze frame) are NOT supported on the reference ECU. v1 handles this via runtime support bits — the same rules make it correct on any car.
 
 ## 5. Verification culture
+- Every protocol claim in docs must trace to a fixture JSON or a cited source in `docs/OBD2_DIAGNOSTICS_RESEARCH.md`.
+- Any new probe: strict abort-on-first-timeout, capped loops, connection killed cleanly after.
+- Never probe OBD while assuming charts.py state — check `:44411/health` first (`hudiy_connected`, `last_obd_age_s`).
+
+## 6. Wheel/knob input (11 Sep, live-proven)
+- This Hudiy build routes NO physical input to third-party overlay webviews (CDP-proven). The shim `tools/keyboard_shim.py` (unit `hudiy-diag-keys`) reads the Elecrow knob on /dev/input/event4 and drives `window.__diagKeyNav()` via CDP 127.0.0.1:9222. Installer deploys the unit + checks the `input` group.
+- True detent map (captured per-direction): 2=left/prev, 3=right/next, 28=center/enter, 1=back. The knob chatters (one turn can emit 5-6 detents).
+- Hudiy RE-SHOWS the singleton overlay webview on relaunch (never recreates); Exit teardown persists as blank unless the page clears it on `onAttached`. Reload-on-visible-edge = white-screen bug; only reload on the exited state.
+- The knob's routing of physical events does NOT change the input-parity rule: touch + bridge keys + gestures still all work in-page.
 - Every protocol claim in docs must trace to a fixture JSON or a cited source in `docs/OBD2_DIAGNOSTICS_RESEARCH.md`.
 - Any new probe: strict abort-on-first-timeout, capped loops, connection killed cleanly after.
 - Never probe OBD while assuming charts.py state — check `:44411/health` first (`hudiy_connected`, `last_obd_age_s`).

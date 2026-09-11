@@ -2,6 +2,49 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-11 — wheel/knob input + overlay lifecycle fixes (uncommitted batch landed)
+
+### Added
+- `tools/keyboard_shim.py` + `backend/deploy/hudiy-diag-keys.service` (new):
+  wheel/knob -> diagnostics page shim. This Hudiy build never routes physical
+  input to third-party overlay webviews (CDP-proven), so the shim reads the
+  Elecrow knob at /dev/input/event4 and fires `window.__diagKeyNav()` via CDP
+  :9222, gated on overlay visibility. Installer now deploys the unit and
+  checks the `input` group.
+- True knob map captured per-direction (the earlier 1/2/3-chain guess was
+  wrong): code 2 = detent LEFT (prev), code 3 = detent RIGHT (next), code 28
+  (ENTER) = knob center press, code 1 (ESC) = back fallback. Device = Elecrow
+  knob per the owner; turns are scroll left/right, click is enter.
+- `frontend/diag.js`: self-contained `window.__diagKeyNav()` — walks the
+  active screen's visible `.ctl` nodes + the global `#actions` bar + the
+  top-bar `#back` button, paints the `.focused` ring, wraps around, activates
+  on enter, handles back. The closure's moveFocus returned false with visible
+  buttons present (its root search missed the `#actions` bar), so the shim
+  path must not depend on page state.
+- `frontend/diag.css`: `.icon-btn.focused` joins the focus-ring selector —
+  the top-bar back button was walkable but never painted its ring.
+
+### Fixed
+- `backend/diag/config.py`: DIAG_MODE="bridge" silently fell back to
+  auto->standalone and broke scans ("No scan data"); accepted as an alias of
+  proxy (deployment env file already used it).
+- Exit -> menu relaunch painted BLANK: Hudiy keeps one webview alive per
+  overlay url and merely re-shows it, so the exit teardown
+  (body.exited + hidden #app) survived. diag.js now clears that state in
+  `window.hudiy.onAttached`; the shim additionally reloads the page on
+  visible-edge ONLY when the exited state is present.
+- White-screen flash mid-use: the shim's earlier unconditional reload on
+  every visibility edge was the cause; replaced by the exited-state check.
+- tools/keyboard_shim.py debug knob: SHIM_DEBUG_LOG=... (one line per
+  dispatch). Double-enter suspicion on 11 Sep resolved by instrumentation:
+  one press -> one dispatch -> one click; early "doubles" were rapid
+  re-presses (the knob chatters, one turn can emit 5-6 detents).
+
+### Docs
+- tools/README.md: keyboard-shim section (device map, installer deploys it,
+  visibility-edge behavior + why blind reload is forbidden).
+- docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md: per-direction device-observed table.
+
 ## 2026-09-09 — Phase 1: research & data gathering
 
 ### Added

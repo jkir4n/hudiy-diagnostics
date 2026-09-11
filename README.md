@@ -36,3 +36,5 @@ fixtures/
 
 **Update 2026-09-10:** Phase 1 complete. All fixtures captured (including negative fixtures: freeze-frame and Mode 0A not supported on the reference car — handled by runtime discovery). Definitive transport constraint + v1 build spec in `docs/V1_SPEC.md`; feature survey in `docs/FEATURE_SURVEY_FINDINGS.md`. Phase 2: backend specialist first, then frontend.
 
+**Update 2026-09-11:** The app is live on the car. Wheel/knob navigation shipped: this Hudiy build routes no physical input to third-party overlay webviews, so `tools/keyboard_shim.py` (unit `hudiy-diag-keys`, installed by `backend/deploy/install.sh`) reads the Elecrow knob at the input layer and drives the page's `window.__diagKeyNav()` via the QtWebEngine DevTools socket — inert unless the overlay is visible. Overlay lifecycle: Hudiy re-shows the singleton webview on relaunch, so the page undoes its exit teardown on attach (anything else = blank relaunch or white-flash; details in `tools/README.md`). Privacy note before any public push: see `docs/GITHUB_PUBLISH_PRIVACY_GATE.md`.
+

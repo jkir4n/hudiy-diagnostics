@@ -79,6 +79,11 @@ MODE_STANDALONE = "standalone"
 #: test suite and by frontend development with no vehicle attached.
 MODE_REPLAY = "replay"
 MODES = (MODE_AUTO, MODE_PROXY, MODE_STANDALONE, MODE_REPLAY)
+#: "bridge" is the deployment-side name for proxy mode (the env file the
+#: installer documents uses it); accept it as an alias so a hand-edited
+#: DIAG_MODE=bridge does not silently fall back to auto and, on a momentary
+#: charts-probe miss, drop into standalone (which needs the capture tool's
+#: hudiy_client module and fails with a loud HostError). Found live 11 Sep.
 
 #: Readiness rule presets. The inspection arithmetic is a *local* rule, not a
 #: technical fact (docs/DIESEL_READINESS_FINDINGS.md section 2), so it lives in
@@ -269,6 +274,8 @@ class Config:
 
     def normalized_mode(self) -> str:
         mode = (self.mode or MODE_AUTO).lower()
+        if mode == "bridge":  # deployment-side alias for proxy (see MODES note)
+            mode = MODE_PROXY
         return mode if mode in MODES else MODE_AUTO
 
     def clamp_v1_limits(self) -> None:

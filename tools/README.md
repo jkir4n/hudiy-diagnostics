@@ -87,3 +87,41 @@ Run procedure (validated twice on-car):
 - `/tmp`-sourced `diag_probe3.json` / `diag_probe4.json` (wedge-era empty
   results) are NOT archived here — zero informational value; the negative
   evidence lives in `fixtures/round2_elm_wedge_aftermath.json`.
+
+## keyboard_shim.py — wheel/knob → diagnostics page (part of the APP)
+
+Not a Phase-1 probe: this ships with every install (installer copies
+`tools/keyboard_shim.py` + `backend/deploy/hudiy-diag-keys.service`).
+
+Why it exists: this Hudiy build never routes physical input (wheel/knob) to
+third-party overlay webviews — proven by CDP trials on 11 Sep (zero DOM
+keydowns and zero bridge callbacks while the overlay was visible;
+inputFocus/activated stay false). The shim reads the knob at the kernel input
+layer and fires the page's own nav hook via the QtWebEngine DevTools socket
+(127.0.0.1:9222), gated on overlay visibility, inert when hidden.
+
+Device map (captured per-direction 11 Sep; earlier 1/2/3 guess was WRONG):
+- `/dev/input/event4` — gen4-ESP32 MCU (Elecrow knob on the head unit),
+  EV_KEY press/release per detent:
+  - code 2 (KEY_1): one detent LEFT (previous)
+  - code 3 (KEY_2): one detent RIGHT (next)
+  - code 28 (KEY_ENTER): knob center press (activate)
+  - code 1 (KEY_ESC): back — kept as fallback
+- The device chatters: one quick turn can emit 5–6 detents — the shim forwards
+  every edge; add debounce only if it ever mis-fires in real use.
+- `/dev/input/event1` is a USB mouse — NOT the knob (first shim version's
+  mistake, three failed user tests before the per-direction re-capture).
+
+Deployment extras the installer now handles: unit install + `input` group
+check (`sudo usermod -aG input $USER` on the reference Pi; done by hand there).
+Debug: set `SHIM_DEBUG_LOG=/tmp/diag_shim_dbg.log` — one line per dispatch.
+
+Hudiy visibility-edge behavior (found live 11–12 Sep): Hudiy RE-SHOWS the
+singleton overlay webview on menu relaunch instead of recreating it, so a
+previous session's Exit teardown (body.exited + hidden #app) persists as a
+blank screen. Two countermeasures: diag.js clears exited state on
+`window.hudiy.onAttached`, and the shim reloads the page ONLY when it sees
+that exited state (reloading blindly flashes white mid-use). Never "fix"
+blank-relaunch by reloading on every visibility edge — that is the white
+screen bug.
+

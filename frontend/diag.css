@@ -406,7 +406,7 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
 
 /* ---------------------------------------------------------------- focus */
 
-.ctl.focused, .tile.focused, .row.focused, .tab.focused, .btn.focused {
+.ctl.focused, .tile.focused, .row.focused, .tab.focused, .btn.focused, .icon-btn.focused {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }

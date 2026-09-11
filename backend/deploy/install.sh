@@ -55,6 +55,8 @@ if [ "$UNINSTALL" = "1" ]; then
   say "stopping and removing $UNIT_NAME"
   run systemctl --user disable --now "$SERVICE" || true
   run rm -f "$UNIT_DIR/$UNIT_NAME"
+  run systemctl --user disable --now "hudiy-diag-keys" || true
+  run rm -f "$UNIT_DIR/hudiy-diag-keys.service"
   run systemctl --user daemon-reload
   say "removed. Copied files left in $INSTALL_DIR (delete by hand if wanted)."
   exit 0
@@ -77,6 +79,16 @@ fi
 
 say "installing user unit -> $UNIT_DIR/$UNIT_NAME"
 run cp -a "$REPO_DIR/backend/deploy/$UNIT_NAME" "$UNIT_DIR/$UNIT_NAME"
+
+# Wheel/key shim (optional, only where a head-unit knob exists). Reads
+# /dev/input BEFORE the shim can run, the user must be in the `input` group.
+SHIM_UNIT="hudiy-diag-keys.service"
+say "installing wheel-key shim unit -> $UNIT_DIR/$SHIM_UNIT"
+run cp -a "$REPO_DIR/backend/deploy/$SHIM_UNIT" "$UNIT_DIR/$SHIM_UNIT"
+if [ "$DRY_RUN" = "0" ] && ! id -nG "$USER" 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+  echo "    NOTE: add your user to the 'input' group for the shim to read the knob:"
+  echo "      sudo usermod -aG input $USER   # then log out+back in (or reboot)"
+fi
 
 if [ ! -f "$ENV_DIR/env" ]; then
   say "writing default env file -> $ENV_DIR/env"

@@ -1263,6 +1263,13 @@
 
   H.onAttached = function () {
     S.attached = true;
+    /* Relaunch after Exit = Hudiy RE-SHOWS the singleton webview; onAttached
+     * is the one reliable signal of that. Without this, body.exited + hidden
+     * #app persist and the relaunch paints blank (found live 11 Sep). */
+    document.body.classList.remove('exited');
+    leaving = false;
+    var unhide = $('app');
+    if (unhide) { unhide.hidden = false; }
     document.body.setAttribute('data-bridge', effectiveBridge());
     syncKeyMode();
     startPolling();
@@ -1324,6 +1331,64 @@
   function kbOn() {
     if (effectiveBridge() === 'dom' && !S.kb) { S.kb = true; syncKeyMode(); }
   }
+
+  /* Direct nav hook for the wheel/key shim (tools/keyboard_shim.py): Hudiy's
+   * native input stack never routes physical keys to third-party overlay
+   * webviews on this build (proven by CDP trials, 11 Sep), so the shim reads
+   * the wheel at /dev/input and calls this instead.
+   *
+   * SELF-CONTAINED on purpose: it does NOT call the closure's moveFocus/
+   * paintFocus/S.focus chain (that chain was seen returning false with visible
+   * .ctl buttons present - the shim needs a nav path that cannot be wedged by
+   * page state). It walks the ACTIVE screen's visible .ctl nodes directly and
+   * paints the .focused ring itself, mirroring the same visual states.
+   */
+  window.__diagKeyNav = function (step) {
+    var root = document.querySelector('.screen.active') ||
+               document.querySelector('[data-screen="' + document.body.getAttribute('data-screen') + '"]');
+    if (!root) { return false; }
+    var nodes = root.querySelectorAll('.ctl');
+    /* .ctl buttons also live in the GLOBAL #actions bar (renderActions), not
+     * inside the .screen sections - without it the Start screen has zero
+     * controls and nav silently no-ops (found 11 Sep). Merge, order kept. */
+    var bar = document.getElementById('actions');
+    var barCtl = bar ? Array.prototype.slice.call(bar.querySelectorAll('.ctl')) : [];
+    var all = Array.prototype.slice.call(nodes).concat(barCtl);
+    /* Top-bar Back button must be reachable by the wheel too (user, 11 Sep). */
+    var backBtn = document.getElementById('back');
+    if (backBtn && !backBtn.hidden) { all.push(backBtn); }
+    var list = [];
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i];
+      if (n.disabled) { continue; }
+      if (n.offsetParent === null && n.tagName !== 'A') { continue; }
+      list.push(n);
+    }
+    if (!list.length) { return false; }
+    var cur = 0;
+    for (var j = 0; j < list.length; j++) {
+      if (list[j].classList.contains('focused')) { cur = j; break; }
+    }
+    if (step === 'activate') {
+      var target = list[cur];
+      if (target) { target.click(); }
+      return true;
+    }
+    if (step === 'back') {
+      var backBtn = document.querySelector('#back');
+      if (backBtn && !backBtn.hidden) { backBtn.click(); return true; }
+      return false;
+    }
+    /* wrap around so the wheel cycles the ring instead of stopping at ends */
+    var next = cur;
+    if (step === 'prev') { next = (cur === 0 ? list.length - 1 : cur - 1); }
+    else { next = (cur === list.length - 1 ? 0 : cur + 1); }
+    for (var k = 0; k < list.length; k++) { list[k].classList.remove('focused'); }
+    list[next].classList.add('focused');
+    document.body.classList.add('kb');
+    if (list[next].scrollIntoView) { list[next].scrollIntoView({ block: 'nearest' }); }
+    return true;
+  };
 
   function onKey(event) {
     if (effectiveBridge() === 'bridge' && S.attached) { return; }
@@ -1544,6 +1609,14 @@
 
   function start() {
     boot();
+    /* Hudiy keeps one webview alive per overlay URL: a relaunch from the menu
+     * re-SHOWS the same page, so a previous session's exitOverlay() state
+     * (body.exited + hidden #app) would survive and paint a blank screen
+     * (found live 11 Sep). Present = undo our own teardown, every show. */
+    document.body.classList.remove('exited');
+    leaving = false;
+    var unhide = $('app');
+    if (unhide) { unhide.hidden = false; }
     wire();
     applyScheme();
     renderHeader();
