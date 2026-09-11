@@ -409,12 +409,19 @@ class HudiyRegistrationTests(unittest.TestCase):
                     "visibility", "visibleOnActions", "staticPosition"):
             self.assertIn(key, entry)
         self.assertEqual(entry["identifier"], "diag")
-        self.assertEqual(entry["action"], "diag_show")
+        # The overlay's action field must be EMPTY: Hudiy treats it as one of its
+        # own native action ids, and a custom string there (e.g. "diag_show")
+        # made Hudiy accept dispatches + set visibility but never create the
+        # overlay webview - the menu tap logged fine and nothing ever painted
+        # (proven by the red-bench A/B test, 11 Sep). The custom action lives
+        # only on the menu item; visibility is runtime-driven by the lane.
+        self.assertEqual(entry["action"], "")
         self.assertEqual((entry["width"], entry["height"]), (800, 480),
                          "the overlay is the head unit's screen size")
         self.assertTrue(entry["url"].endswith("/app/diag.html"))
-        self.assertIn(entry["action"], entry["visibleOnActions"],
-                      "the menu action must be the one that shows the overlay")
+        diag_show = json.loads(self.load("hudiy", "applications_menu.json"))
+        self.assertEqual(diag_show["action"], "diag_show",
+                         "the MENU item carries the custom action")
 
     def test_menu_fragment_is_a_material_icon_in_the_hudiy_category(self):
         item = json.loads(self.load("hudiy", "applications_menu.json"))

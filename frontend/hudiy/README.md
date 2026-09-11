@@ -22,6 +22,13 @@ Live config directory (see `docs/HUDIY_UI_API_INVENTORY.md`):
 * Idempotent: looks up the overlay by `identifier == "diag"` and the menu item by
   `action == "diag_show"`. Re-running updates the overlay `url` and reports
   "already present" for everything else.
+* The overlay fragment deliberately leaves \`action\` EMPTY. Hudiy treats that
+  field as one of ITS OWN native action ids; a custom string there (e.g.
+  \`diag_show\`) makes Hudiy accept the dispatch and flip visibility but never
+  create the overlay's webview - the menu taps log fine and nothing paints.
+  The custom action lives ONLY on the menu item; the overlay is shown/hidden at
+  runtime by the control lane (SetCustomOverlayVisibility), exactly like the
+  working race-dash overlay.
 * Non-destructive: each file it is about to change is first copied to
   `<name>.bak-<YYYYmmdd-HHMMSS>`. `applications.json` is never touched - this is
   an overlay, not a second instance of the app UI.

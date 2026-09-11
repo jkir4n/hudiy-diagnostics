@@ -1,6 +1,6 @@
 {
   "identifier": "diag",
-  "action": "diag_show",
+  "action": "",
   "width": 800,
   "height": 480,
   "x": 0,
