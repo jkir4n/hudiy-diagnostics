@@ -2,6 +2,17 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-11 — one-line install path
+
+### Added
+- `install-bootstrap.sh` (repo root): entire install now one command —
+  `git clone <repo> && cd Hudiy-Diagnostics && bash install-bootstrap.sh`.
+  Handles the piped `curl | bash` case (clones `DIAG_REPO_REMOTE` into a temp
+  dir), then wraps `backend/deploy/install.sh`. Ends by printing the two
+  manual extras (input group, Hudiy restart). Verified: in-repo dry-run and a
+  piped full install (lane answered :44414/health) — both clean.
+- README: Quickstart at the top.
+
 ## 2026-09-11 — wheel/knob input + overlay lifecycle fixes (uncommitted batch landed)
 
 ### Added
