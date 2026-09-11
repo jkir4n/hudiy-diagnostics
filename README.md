@@ -4,6 +4,17 @@ Car diagnostics app for Hudiy — reads OBD data, checks for errors, runs vehicl
 
 **Status: Phase 1 — research & data gathering (backend/frontend deliberately deferred).**
 
+## Install (one line, no root)
+
+```
+git clone <this repo> && cd Hudiy-Diagnostics && bash install-bootstrap.sh
+```
+or, once published:
+```
+bash <(curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/master/install-bootstrap.sh)
+```
+Installs user units + the wheel/knob shim, registers the Hudiy menu entry, health-checks `:44414`. The two things it cannot do for you are printed at the end (`input` group, Hudiy restart). Underneath it runs `backend/deploy/install.sh` (`--dry-run` supported).
+
 ## Repository layout
 ```
 docs/
