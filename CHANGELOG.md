@@ -2,6 +2,23 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-14 — link chip froze at "unknown" on the car (frontend hotfix)
+
+### Fixed
+- `frontend/diag.js`:
+  - `pollAllowed()` no longer gates health polling on the bridge's `activated`
+    flag: this Hudiy build keeps `activated=false` even while the overlay is
+    shown (same input-routing quirk as the wheel), so the gate silently froze
+    all `/health` polling and the link chip stayed at "Link state unknown".
+    Polling now follows page visibility only.
+  - `H.onActivatedChanged` no longer stops polling on `activated=false`; it
+    calls `restartPolling()`, which re-evaluates visibility.
+  - `LINK_WORD`/`STATE_SEV` now spell the wire value `stale-handle` (hyphen,
+    matching `backend/diag/lane.py`). Previously `stale_handle`/`stale`, so a
+    stale link rendered as raw "Link: stale-handle" with no severity mapping.
+- `frontend/diag.css`: pill/hero warning selectors match
+  `[data-state="stale-handle"]`.
+
 ## 2026-09-14 — Material 3 colour-token layer (frontend theming)
 
 ### Changed

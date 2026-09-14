@@ -110,7 +110,7 @@
   var LINK_WORD = {
     online: 'ECU connected',
     scanning: 'Reading the ECU',
-    stale_handle: 'ECU reconnecting',
+    'stale-handle': 'ECU reconnecting',
     reconnecting: 'ECU reconnecting',
     offline: 'ECU not answering',
     unavailable: 'Lane unavailable',
@@ -287,7 +287,7 @@
    * Same severity mapping as everywhere else: dot + colour, never colour
    * alone - the chip also carries a short word. */
   var STATE_SEV = {
-    online: 'ok', scanning: 'info', stale: 'warn', reconnecting: 'warn',
+    online: 'ok', scanning: 'info', 'stale-handle': 'warn', reconnecting: 'warn',
     offline: 'bad', unavailable: 'bad', unknown: 'quiet'
   };
 
@@ -1321,7 +1321,9 @@
   H.onInputFocusChanged = function () { syncKeyMode(); };
   H.onActivatedChanged = function () {
     syncKeyMode();
-    if (H.activated) { startPolling(); } else { stopPolling(); }
+    /* Never hard-stop polling on `activated` (unreliable on this build);
+     * restartPolling() re-evaluates the real gate (page visibility). */
+    restartPolling();
   };
   H.onColorSchemeChanged = function () { applyScheme(); };
   H.onMoveToNextControl = function () { return bridgeActive() ? moveFocus(1) : true; };
@@ -1605,8 +1607,12 @@
   }
 
   function pollAllowed() {
+    /* Poll while the page is visible. The bridge's `activated` flag stays
+     * false on this Hudiy build even while the overlay is shown (same
+     * input-routing quirk as the wheel - see docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md),
+     * so it must NOT gate polling: gating on it froze the link chip at
+     * "unknown" while the user was looking at the page. */
     if (document.visibilityState === 'hidden') { return false; }
-    if (effectiveBridge() === 'bridge' && S.attached && H.activated === false) { return false; }
     return true;
   }
 

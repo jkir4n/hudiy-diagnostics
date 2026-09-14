@@ -225,7 +225,7 @@ body.scheme-light {
 }
 .pill[data-state="online"]::before { background: var(--ok); }
 .pill[data-state="scanning"]::before { background: var(--info); }
-.pill[data-state="stale"]::before,
+.pill[data-state="stale-handle"]::before,
 .pill[data-state="reconnecting"]::before { background: var(--warn); }
 .pill[data-state="offline"]::before, .pill[data-state="unavailable"]::before { background: var(--bad); }
 .pill[data-state="online"] { color: var(--ink); }
@@ -278,7 +278,7 @@ body.scheme-light {
   flex: 0 0 8px;
 }
 .hero[data-state="online"] .hero-kicker::before { background: var(--ok); }
-.hero[data-state="stale"] .hero-kicker::before,
+.hero[data-state="stale-handle"] .hero-kicker::before,
 .hero[data-state="reconnecting"] .hero-kicker::before { background: var(--warn); }
 .hero[data-state="offline"] .hero-kicker::before,
 .hero[data-state="unavailable"] .hero-kicker::before { background: var(--bad); }
