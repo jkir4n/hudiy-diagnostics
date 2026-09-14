@@ -89,10 +89,15 @@ Run procedure (validated twice on-car):
   results, zero informational value); the load-bearing negative evidence lives
   in `fixtures/round2_elm_wedge_aftermath.json`.
 
-## keyboard_shim.py — wheel/knob → diagnostics page (part of the APP)
+## keyboard_shim.py — wheel/knob → diagnostics page (input fallback)
 
-Not a Phase-1 probe: this ships with every install (installer copies
-`tools/keyboard_shim.py` + `backend/deploy/hudiy-diag-keys.service`).
+Not a Phase-1 probe: this ships with every install (the installer copies the
+whole `tools/` tree + `backend/deploy/hudiy-diag-keys.service`). It is a
+**compatibility fallback, not an app-specific control scheme**: touch and mouse
+work natively, and knobs/keyboards/remotes go through Hudiy's own bridge; this
+adapter only covers builds where Hudiy does not deliver key events into a
+third-party overlay webview - and it yields whenever the page reports native
+input focus (`window.hudiy.inputFocus === true`).
 
 Why it exists: this Hudiy build never routes physical input (wheel/knob) to
 third-party overlay webviews — proven by CDP trials on 11 Sep (zero DOM

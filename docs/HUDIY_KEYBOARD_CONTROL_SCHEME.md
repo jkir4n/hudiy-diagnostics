@@ -125,6 +125,20 @@ Hudiy's navigation is one scheme, and every supported input form speaks it:
   `activeBoundaries` (scrolling at scope edges jumps between scopes), and
   `splitWithProjections` for the focus toggle (`t` /
   KEY_TYPE_TOGGLE_INPUT_FOCUS).
+- Input coverage in the app - no app-specific scheme, input follows the user:
+
+  | User has | Works via | Extra needed |
+  |---|---|---|
+  | Touchscreen | native Chromium touch (tap moves the ring + activates) | no |
+  | Mouse | click; wheel = the same focus walk (scrollable regions keep native scrolling) | no |
+  | Keyboard (Hudiy-routed) | Hudiy's bridge callbacks (`onMoveToNextControl` etc.) | no |
+  | Knob / remote / GPIO (Hudiy-routed) | the same bridge callbacks | no |
+  | Any of the above on a build that does NOT deliver to overlays | `tools/keyboard_shim.py` fallback (auto-discovers the device, yields when the page holds native focus, `DIAG_SHIM_DISABLE=1` turns it off) | ships in the one-line install |
+
+- One-line install (`install-bootstrap.sh` → `backend/deploy/install.sh`) adds
+  only our own files and registers the overlay + menu entry through Hudiy's own
+  config files (`frontend/hudiy/merge_config.py`); nothing Hudiy-specific is
+  bundled.
 
 ## 5. Sources
 

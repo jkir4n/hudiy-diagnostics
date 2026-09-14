@@ -2,6 +2,18 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-14 — Input follows the user: wheel support, cooperative fallback, install fix
+
+### Added
+- `frontend/diag.js`: mouse-wheel navigation (same focus walk as keyboard/knob; genuinely scrollable regions such as the report `<pre>` keep native scrolling). Header comment reframed: Hudiy's bridge is the primary input path - nothing app-specific.
+- `tools/keyboard_shim.py`: the fallback now yields whenever the page reports native input focus (`window.hudiy.inputFocus === true`) - on installs where Hudiy delivers input to overlays it stays out of the way entirely.
+
+### Fixed
+- `backend/deploy/install.sh` never copied `tools/` into the installed tree, so a fresh install left the shim unit pointing at a missing file. The installer now copies `tools/` (replace-style, like the other trees).
+
+### Docs
+- `docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md` section 4: input coverage matrix (touch / mouse / keyboard / knob / fallback) + one-line-install note; `tools/README.md` reframes the shim as the compatibility fallback.
+
 ## 2026-09-14 — Knob input generalized to Hudiy's control scheme (universal adapter)
 
 ### Changed

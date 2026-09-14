@@ -3,12 +3,15 @@
  * Design notes
  * ------------
  * Input parity (V1_SPEC rule 6): every action on every screen is reachable by
- * touch, by the Hudiy key/knob bridge, and by a gesture. The bridge is primary:
- * window.hudiy carries inputFocus/activated plus the callback set documented in
- * docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md (onMoveToNextControl /
- * onMoveToPreviousControl return true when the page consumed the key, false to
- * hand it back to Hudiy). A DOM keydown fallback drives exactly the same state
- * machine for browser testing and for installs where the bridge is absent.
+ * touch, mouse (click + wheel), or whatever controller the user has - Hudiy
+ * delivers knobs/keyboards/remotes to its web views through the bridge
+ * documented in docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md. That is the primary
+ * path, and it is Hudiy's own contract, not an app-specific scheme:
+ * window.hudiy carries inputFocus/activated plus onMoveToNextControl /
+ * onMoveToPreviousControl (return true when the page consumed the key, false
+ * to hand it back to Hudiy), onTriggered, onGoBack, onGoLeft/onGoRight.
+ * A DOM keydown + wheel fallback drives exactly the same state machine for
+ * browser testing and for installs where the bridge is absent.
  * localStorage ("diag.bridge") / "?bridge=" / the settings screen pick the path
  * (auto-detect by default: bridge once Hudiy attaches, DOM until then).
  *
@@ -1186,10 +1189,20 @@
   function controls() {
     var root = screenEl();
     if (!root) { return []; }
-    var nodes = root.querySelectorAll('.ctl');
+    var all = Array.prototype.slice.call(root.querySelectorAll('.ctl'));
+    /* The action buttons live in the GLOBAL #actions bar, not inside the
+     * .screen sections (renderActions), so the ring must merge them or every
+     * bar button is unreachable - on S0 the screen section alone has zero
+     * controls and nav silently no-ops (same fix the wheel hook got 11 Sep).
+     * Order mirrors __diagKeyNav: screen controls, then bar, then top-bar
+     * Back. */
+    var bar = document.getElementById('actions');
+    if (bar) { all = all.concat(Array.prototype.slice.call(bar.querySelectorAll('.ctl'))); }
+    var backBtn = document.getElementById('back');
+    if (backBtn && !backBtn.hidden) { all.push(backBtn); }
     var out = [];
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i];
       if (n.disabled) { continue; }
       if (n.offsetParent === null && n.tagName !== 'A') { continue; }
       out.push(n);
@@ -1549,11 +1562,48 @@
 
   function onKey(event) {
     if (effectiveBridge() === 'bridge' && S.attached) { return; }
+    // The OK/Enter alias listener (wire()) runs first and consumes Enter/OK by
+    // clicking the focused control; without this guard the same keypress also
+    // reaches KEYMAP and activates a second time - on S0 that clicked
+    // "Start health scan" and then "Cancel" on the freshly-shown S1 (found
+    // live in the browser test, 14 Sep).
+    if (event.defaultPrevented) { return; }
     if (event.altKey || event.ctrlKey || event.metaKey) { return; }
     var fn = KEYMAP[event.key];
     if (!fn) { return; }
     var handled = fn();
     if (handled) { event.preventDefault(); }
+  }
+
+  /* Mouse wheel / trackpad: the desktop counterpart of scroll left/right
+   * (keys `1`/`2` in Hudiy's scheme). Walks the same focus ring as the
+   * keyboard and the knob; a region that can genuinely scroll (the report
+   * <pre>) keeps its native scrolling. Deltas accumulate so a trackpad's
+   * fine-grained stream still moves one step per gesture notch. Handled in
+   * every mode - Hudiy does not translate wheel input, so this is ours. */
+  var wheelAcc = 0, wheelAt = 0;
+  function onWheel(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) { return; }
+    var delta = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+    if (!delta) { return; }
+    var el = event.target;
+    while (el && el !== document.body) {
+      var style = window.getComputedStyle(el);
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+          el.scrollHeight > el.clientHeight + 2) {
+        return;                          /* let the region scroll natively */
+      }
+      el = el.parentElement;
+    }
+    var now = Date.now();
+    if (now - wheelAt > 350) { wheelAcc = 0; }      /* new gesture */
+    wheelAt = now;
+    wheelAcc += delta;
+    if (Math.abs(wheelAcc) < 40) { event.preventDefault(); return; }
+    var step = wheelAcc > 0 ? 1 : -1;
+    wheelAcc = 0;
+    kbOn();
+    if (moveFocus(step)) { event.preventDefault(); }
   }
 
   /* -------------------------------------------------------- input: touch */
@@ -1758,6 +1808,7 @@
     });
 
     document.addEventListener('keydown', onKey);
+    document.addEventListener('wheel', onWheel, { passive: false });
     var app = $('app');
     app.addEventListener('touchstart', onTouchStart, { passive: true });
     app.addEventListener('touchend', onTouchEnd, { passive: true });

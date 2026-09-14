@@ -66,12 +66,16 @@ say "installing from $REPO_DIR -> $INSTALL_DIR"
 run mkdir -p "$INSTALL_DIR" "$UNIT_DIR" "$ENV_DIR"
 # Replace (not merge) the copied trees so a pulled version never leaves stale
 # modules behind - this is what makes re-running the installer an update.
-run rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/fixtures" "$INSTALL_DIR/frontend"
+run rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/fixtures" "$INSTALL_DIR/frontend" "$INSTALL_DIR/tools"
 run cp -a "$REPO_DIR/backend" "$INSTALL_DIR/backend"
 run cp -a "$REPO_DIR/fixtures" "$INSTALL_DIR/fixtures"
 # The overlay page is served by the lane itself (/app/* -> frontend/*), so the
 # installed layout must carry it too.
 run cp -a "$REPO_DIR/frontend" "$INSTALL_DIR/frontend"
+# The input fallback runs from the installed tree (unit ExecStart), so tools/
+# must be present as well - without it a fresh install would point the shim
+# unit at a missing file.
+run cp -a "$REPO_DIR/tools" "$INSTALL_DIR/tools"
 run rm -rf "$INSTALL_DIR/backend/__pycache__"
 if [ "$DRY_RUN" = "0" ]; then
   find "$INSTALL_DIR/backend" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true

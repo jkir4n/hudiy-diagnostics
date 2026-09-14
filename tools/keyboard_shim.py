@@ -12,8 +12,11 @@ WHY THIS EXISTS
     build, 2026-09-11: zero DOM keydowns, zero hudiy={} callbacks), this
     adapter reads the device at the kernel input layer and drives the page's
     own nav hook ``window.__diagKeyNav()`` over the QtWebEngine DevTools
-    socket. While the overlay is hidden the adapter is inert -- it never
-    touches Hudiy's native UI or the race-dash overlay.
+    socket. It yields whenever the page reports native input focus
+    (``window.hudiy.inputFocus === true``): installs where Hudiy delivers keep
+    pure Hudiy behavior -- this is a compatibility fallback, not an
+    app-specific control scheme. While the overlay is hidden the adapter is
+    inert -- it never touches Hudiy's native UI or the race-dash overlay.
 
 WHAT IT READS (any device speaking Hudiy's navigation vocabulary)
     kernel key -> page step
@@ -154,7 +157,12 @@ def nav_step(ws_url_holder: dict, step: str) -> None:
         if not url:
             return
         ws_url_holder["url"] = url
-    expr = f"typeof window.__diagKeyNav==='function' && window.__diagKeyNav({step!r})"
+    # Yield to Hudiy's own delivery whenever the page reports native input
+    # focus: on installs that route keys to the overlay, the bridge callbacks
+    # already handled the step and a duplicate dispatch would double-move.
+    guard = "!(window.hudiy && window.hudiy.inputFocus === true)"
+    expr = (f"{guard} && typeof window.__diagKeyNav==='function' "
+            f"&& window.__diagKeyNav({step!r})")
     if not cdp_eval(url, expr):
         dbg("first eval failed -> retry")
         # target vanished (page reloaded / overlay closed) - force re-resolve
