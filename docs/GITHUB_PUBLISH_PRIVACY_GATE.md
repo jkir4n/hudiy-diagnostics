@@ -25,18 +25,17 @@ handles) live in `tools/privacy-patterns.local` — **gitignored; never commit,
 never copy into the repository**. The audit checks them automatically when the
 file is present.
 
-## History — read before pushing
-Scrubbing the working tree does not rewrite git history: commits up to and
-including tag `pre-scrub-2026-09-14` contain the original values (and agent/CI
-author identities). A public push must use fresh history:
-- **Option A (recommended):** publish one clean commit —
-  `git checkout --orphan public && git add -A && git commit -m "Initial public release"` —
-  push `public` to the new public remote; keep this repo private.
-- **Option B:** rewrite history with
-  `git filter-repo --replace-text <patterns-file>` (patterns file built from the
-  local list), verify with the audit, then push.
-Never `git push --tags` from this repo while the `pre-scrub-2026-09-14` tag
-exists.
+## History — purged 2026-09-14
+All commits were rewritten **in place** on 2026-09-14: every original identifier was
+replaced in every historical blob *and* commit message (one fixture typo-fix commit
+collapsed to empty in the process and was auto-pruned; 47 commits remain). Verified
+zero residuals across all refs; the working tree is byte-identical to before the
+rewrite. The original pre-scrub history survives only as an **offline archive kept by
+the maintainer** (fingerprint sha256 `6dec1228...`) — never upload, share, or copy it
+into this repo.
+
+Consequence: **a plain `git push` of `master` is now safe.** No fresh-history
+trickery, no tag restrictions. The old `pre-scrub-2026-09-14` tag has been retired.
 
 ## Still open (owner decisions at publish time)
 - License: none in-repo yet — pick one before/at publish.

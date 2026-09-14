@@ -2,6 +2,12 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-14 — Git history purge (pre-publication privacy pass)
+
+### Changed
+- All 48 commits rewritten in place (`git filter-repo`): the original VIN / CAL-ID / CVN / tailnet address / paths / name mentions were replaced in every historical blob and commit message; one fixture typo-fix commit collapsed to empty and was auto-pruned (47 commits remain). Verified zero residuals across all refs (blobs + messages); the working tree is byte-identical to before the rewrite. The original history is archived offline only — never uploaded.
+- A plain `git push` of `master` is now safe for publication; the pre-scrub marker tag has been retired. See `docs/GITHUB_PUBLISH_PRIVACY_GATE.md`.
+
 ## 2026-09-14 — Input follows the user: wheel support, cooperative fallback, install fix
 
 ### Added
