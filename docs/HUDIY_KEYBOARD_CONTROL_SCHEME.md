@@ -2,8 +2,9 @@
 
 Status: research COMPLETE (10 Sep, from the authoritative `wiboma/hudiy` repo itself
 - `api/Api.proto`, `examples/gpio/KeyStrokes.py`, `examples/api/python/KeyStrokes.py`,
-`examples/template.html`, `examples/input_scope.html`). Device-level verification (keys
-actually reaching our overlay page) is owed by the frontend card's bench test.
+`examples/template.html`, `examples/input_scope.html`). Device-level verification ran 11 Sep: on our build **no key events reach a
+third-party overlay webview** - the input adapter (`tools/keyboard_shim.py`,
+generalized in section 4) covers it.
 
 ## 1. The hardware key vocabulary (`Api.proto` `KeyType` enum)
 
@@ -19,12 +20,13 @@ actually reaching our overlay page) is owed by the frontend card's bench test.
 | MEDIA_MENU / NAVIGATION_MENU / VOICE_COMMAND | 19-21 | menus / voice |
 | **TOGGLE_INPUT_FOCUS** | **23** | toggles whether the PAGE or Hudiy's native UI holds input focus |
 
-**Device note (11 Sep, device-observed):** on our head unit the scroll
-wheel appears to dispatch **1 and 2** (UP/DOWN semantics) rather than 5-6
-(SCROLL_*) - or the wheel's keypresses are translated UP/DOWN somewhere before
-the webview. Unresolved until the CDP probe on the overlay webview shows which
-key types actually arrive; the page handles both shapes (scroll pairs drive the
-same focus walk).
+**Device note (resolved 14 Sep):** the wheel emits the **keyboard keys `1`
+and `2`** (kernel KEY_1/KEY_2) - which is exactly Hudiy's scheme: its README
+binds `1`/`2` to *scroll left / scroll right* (the KeyType SCROLL_* values 5/6
+are the API-injection vocabulary, not the physical-key vocabulary). The center
+press is `enter` (KEY_ENTER), back is `escape` (KEY_ESC). The 11 Sep CDP probe
+then showed no key events reach a third-party overlay webview on this build;
+the page-side fallback for that is the input adapter (section 4).
 
 `KeyEvent` messages (UP/DOWN/LEFT/RIGHT/ENTER/BACK/SCROLL_*) are `client->Hudiy`
 **injection**: a GPIO controller (upstream `examples/gpio/KeyStrokes.py`) sends
@@ -85,15 +87,46 @@ browsing session).
   on this contract - one implementation serves all.
 - Touch still works in parallel (bridge is additive; `input_scope` touches
   nothing).
-- **Device trial item for the frontend card:** confirm a custom-overlay page
-  (not a dashboard widget) receives these bridge callbacks on our Hudiy build -
-  template.html/input_scope.html ship as *dashboard widget* examples; overlay
-  behavior is presumed identical but unproven until tested. Fallback if the
-  overlay lacks the bridge: DOM `keydown` listener (the Wayland webview receives
-  real key events from the keyboard; the race-dash toggle's shortcut path proves
-  system keys flow).
+- **Device trial (11 Sep, done):** a custom-overlay page receives **no** key
+  events on our build - zero DOM keydowns, zero bridge callbacks, `inputFocus`/
+  `activated` stay false. The bridge callbacks remain implemented (the right
+  thing on any Hudiy where delivery works); on this build the page is driven by
+  `tools/keyboard_shim.py` (the input adapter, section 4), which fires the same
+  navigation functions the callbacks use.
 
-## 4. Sources
+## 4. Generalizing for any Hudiy install (14 Sep 2026)
+
+Hudiy's navigation is one scheme, and every supported input form speaks it:
+
+| Hudiy action | API key type | Upstream key binding | Kernel representation |
+|---|---|---|---|
+| scroll left | SCROLL_LEFT (5) | key `1` | KEY_1 (2) |
+| scroll right | SCROLL_RIGHT (6) | key `2` | KEY_2 (3) |
+| trigger | ENTER (7) | `enter` | KEY_ENTER (28) |
+| go back | BACK (8) | `escape` | KEY_ESC (1) |
+| focus moves | UP/DOWN/LEFT/RIGHT (1-4) | arrow keys | KEY_UP/DOWN/LEFT/RIGHT (103/108/105/106) |
+
+- External input (GPIO d-pads, MCU knobs) joins Hudiy through **KeyEvent
+  injection** over TCP 44405 (upstream `examples/gpio/KeyStrokes.py`; the
+  volume variants use `DispatchAction`).
+- The physical keys and the API key types are two vocabularies of the same
+  scheme. Our adapter (`tools/keyboard_shim.py`) reads the physical layer and
+  accepts **any device speaking that vocabulary** - plus the conventional
+  extras KEY_SCROLLUP/DOWN, KEY_KPENTER/KEY_OK, KEY_BACK and mouse-style
+  `REL_WHEEL`/`REL_HWHEEL` encoders - normalizing all of them to the page's
+  prev/next/activate/back.
+- Device auto-discovery (name hints + capability scan) replaces the fixed
+  `/dev/input/event4`: `DIAG_SHIM_DEVICE` pins a path, `DIAG_SHIM_MATCH` /
+  `DIAG_SHIM_EXCLUDE` tune the scan, `python3 tools/keyboard_shim.py --scan`
+  prints the candidates on any machine, and `DIAG_SHIM_DISABLE=1` turns the
+  adapter off entirely (for installs where Hudiy delivers input natively).
+- Related Hudiy settings (upstream `main_configuration.md`):
+  `handleKeyboardEvents` (keyboard listening; API injection unaffected),
+  `activeBoundaries` (scrolling at scope edges jumps between scopes), and
+  `splitWithProjections` for the focus toggle (`t` /
+  KEY_TYPE_TOGGLE_INPUT_FOCUS).
+
+## 5. Sources
 
 - `wiboma/hudiy` `api/Api.proto` (KeyType enum, KeyEvent message) - enum verified
   11 Sep: UP=1 DOWN=2 LEFT=3 RIGHT=4 SCROLL_LEFT=5 SCROLL_RIGHT=6 ENTER=7 BACK=8
@@ -104,6 +137,9 @@ browsing session).
 - `wiboma/hudiy` `examples/template.html` (canonical bridge skeleton, all 9 callbacks)
 - `wiboma/hudiy` `examples/input_scope.html` (canonical focus-ring reference implementation)
 - `wiboma/hudiy` `examples/api/js/go_back*.html` (hudiy.api webview history)
+- `wiboma/hudiy` `README.md` "Supported Key Bindings" (kbd `1`/`2` = scroll left/right; `enter` trigger; `escape` back; arrow keys) and "Input events" (web views receive scroll events; left/right/back reserved for applications)
+- `wiboma/hudiy` `main_configuration.md` (`handleKeyboardEvents`, `activeBoundaries`, `splitWithProjections`)
+- `wiboma/hudiy` `examples/gpio/KeyStrokes.py` + `VolumeRotaryEncoder.py` (the two canonical external-input patterns)
 - hudiy.eu was geo-blocked from this network (country-block page); the upstream
   repo is the same upstream that ships the car's Hudiy build, so it is treated
   as authoritative.

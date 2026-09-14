@@ -2,6 +2,16 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-14 — Knob input generalized to Hudiy's control scheme (universal adapter)
+
+### Changed
+- `tools/keyboard_shim.py` is now a Hudiy-scheme input adapter: it recognizes the full navigation vocabulary - keys `1`/`2` (Hudiy's scroll left/right), arrow keys, `enter`, `escape`, plus `KEY_SCROLLUP/DOWN`, `KEY_KPENTER`/`KEY_OK`, `KEY_BACK` and mouse-style `REL_WHEEL`/`REL_HWHEEL` encoders - and normalizes any of them to the page's prev/next/activate/back. Device auto-discovery (name hints + capability scan) replaces the fixed `/dev/input/event4`; `DIAG_SHIM_DEVICE`, `DIAG_SHIM_MATCH`, `DIAG_SHIM_EXCLUDE`, `DIAG_SHIM_DISABLE` tune it; `--scan` prints device candidates and exits.
+- `backend/tests/test_keyboard_shim.py` - translation-table and device-scoring tests (pure logic; no hardware needed).
+- `docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md` - the scheme is now explained from upstream (keyboard `1`/`2` = scroll left/right; the old "1 and 2 vs 5-6" device note is resolved) with the adapter's translation table (section 4). `tools/README.md`, `README.md` updated to match.
+
+### Notes
+- Reference-car behavior unchanged (same device and mapping; discovery picks it).
+
 ## 2026-09-14 — Publish readiness: privacy gate executed + universality pass (NOT published)
 
 ### Changed (privacy scrub — see `docs/GITHUB_PUBLISH_PRIVACY_GATE.md`)

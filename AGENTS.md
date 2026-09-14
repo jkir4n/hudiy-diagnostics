@@ -40,7 +40,7 @@ Non-negotiable requirements (owner's verbatim constraints):
 - Never probe OBD while assuming charts.py state — check `:44411/health` first (`hudiy_connected`, `last_obd_age_s`).
 
 ## 6. Wheel/knob input (11 Sep, live-proven)
-- This Hudiy build routes NO physical input to third-party overlay webviews (CDP-proven). The shim `tools/keyboard_shim.py` (unit `hudiy-diag-keys`) reads the Elecrow knob on /dev/input/event4 and drives `window.__diagKeyNav()` via CDP 127.0.0.1:9222. Installer deploys the unit + checks the `input` group.
+- This Hudiy build routes NO physical input to third-party overlay webviews (CDP-proven). The shim `tools/keyboard_shim.py` (unit `hudiy-diag-keys`) reads the head-unit knob (auto-discovered; reference hardware: Elecrow/gen4-ESP32 at /dev/input/event4) and drives `window.__diagKeyNav()` via CDP 127.0.0.1:9222. Installer deploys the unit + checks the `input` group.
 - True detent map (captured per-direction): 2=left/prev, 3=right/next, 28=center/enter, 1=back. The knob chatters (one turn can emit 5-6 detents).
 - Hudiy RE-SHOWS the singleton overlay webview on relaunch (never recreates); Exit teardown persists as blank unless the page clears it on `onAttached`. Reload-on-visible-edge = white-screen bug; only reload on the exited state.
 - The knob's routing of physical events does NOT change the input-parity rule: touch + bridge keys + gestures still all work in-page.

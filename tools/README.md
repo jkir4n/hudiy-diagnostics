@@ -101,7 +101,7 @@ inputFocus/activated stay false). The shim reads the knob at the kernel input
 layer and fires the page's own nav hook via the QtWebEngine DevTools socket
 (127.0.0.1:9222), gated on overlay visibility, inert when hidden.
 
-Device map (captured per-direction 11 Sep; earlier 1/2/3 guess was WRONG):
+Device map (keys `1`/`2` are Hudiy's scroll-left/right bindings; captured per-direction 11 Sep):
 - `/dev/input/event4` — gen4-ESP32 MCU (Elecrow knob on the head unit),
   EV_KEY press/release per detent:
   - code 2 (KEY_1): one detent LEFT (previous)
@@ -112,7 +112,8 @@ Device map (captured per-direction 11 Sep; earlier 1/2/3 guess was WRONG):
   every edge; add debounce only if it ever mis-fires in real use.
 - `/dev/input/event1` is a USB mouse — NOT the knob (first shim version's
   mistake, three failed user tests before the per-direction re-capture).
-- Portability: `DIAG_SHIM_DEVICE` overrides the knob device (default `/dev/input/event4`); if the device is absent the shim waits quietly instead of restart-looping. `DIAG_SHIM_LANE_STATUS` / `DIAG_HTTP_PORT` and `DIAG_SHIM_CDP` override the endpoints.
+- Vocabulary (Hudiy's scheme): keys `1`/`2` = scroll left/right, `enter` = trigger, `escape` = back, arrows = focus moves - plus KEY_SCROLLUP/DOWN, KPENTER/OK, KEY_BACK and mouse-style `REL_WHEEL` encoders. See `docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md` section 4.
+- Portability: the device is auto-discovered (name hints + capability scan); `DIAG_SHIM_DEVICE` pins a path, `DIAG_SHIM_MATCH`/`DIAG_SHIM_EXCLUDE` tune the scan, `--scan` prints candidates and exits, `DIAG_SHIM_DISABLE=1` turns the shim off. If no device is available the shim waits quietly instead of restart-looping. `DIAG_SHIM_LANE_STATUS` / `DIAG_HTTP_PORT` and `DIAG_SHIM_CDP` override the endpoints.
 
 Deployment extras the installer now handles: unit install + `input` group
 check (`sudo usermod -aG input $USER` on the reference Pi; done by hand there).

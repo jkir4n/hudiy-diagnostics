@@ -4,6 +4,8 @@ After=hudiy-diagnostics.service
 
 [Service]
 # %h is the user's home - universal on any install; no user-specific home baked in.
+# The shim auto-detects the knob; optional overrides (see tools/README.md):
+#   DIAG_SHIM_DEVICE, DIAG_SHIM_MATCH, DIAG_SHIM_EXCLUDE, DIAG_SHIM_DISABLE
 ExecStart=/usr/bin/python3 %h/.local/share/hudiy-diagnostics/tools/keyboard_shim.py
 Restart=on-failure
 RestartSec=3
