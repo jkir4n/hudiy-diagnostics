@@ -28,9 +28,10 @@
 
 :root {
   /* ---- M3 scheme layer (fallback scheme; live values from hudiy bridge) - */
-  --m3-background: #000000;
+  /* IPS/LCD: lifted dark base, not flat #000 (dead gray on backlit panels) */
+  --m3-background: #0F1216;
   --m3-on-background: #F1F5F7;
-  --m3-surface: #000000;
+  --m3-surface: #0F1216;
   --m3-on-surface: #F1F5F7;
   --m3-surface-dim: #12141A;
   --m3-surface-bright: #2A3136;

@@ -23,7 +23,10 @@ Source: github.com/wiboma/hudiy README images (screenshots 1-5, 7-12, 14-16, 23,
 - Our controls show rgba tints+lines; Hudiy shows colored arc gauges / colored sparklines.
 
 ## Redesign targets (diag.html/diag.css rewrite)
-A. Tokens: bg #000; surface #1C1F26-ish still mapped to --m3-* surface roles (bridge wins over fallback always).
+A. Tokens: the FALLBACK bg is NOT flat #000 — on IPS/LCD panels pure black renders dead
+   grayish (backlights can't do true black). Use a lifted dark base (#0F1216-class) with
+   cards #1C1F26-class so the background↔card tonal step is visible. #000 only suits OLED.
+   (These paints still map to --m3-* surface roles; bridge wins over fallback always.)
 B. Flat cards: remove borders/glows; radius 20px; fill = colorScheme surfaceContainer/surfaceContainerHigh.
 C. Value-first metric tiles for gauges block (load/rpm/temp/speed/intake/throttle when live): label 12px gray, value 28px accent, unit 11px muted.
 D. Capsule pill buttons: icon+label, transparent surface, accent bg on active.
