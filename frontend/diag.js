@@ -1731,6 +1731,15 @@
     if (unhide) { unhide.hidden = false; }
     wire();
     applyScheme();
+    /* Hudiy injects colorScheme AFTER page load and does not fire
+     * onColorSchemeChanged for the initial value, so re-apply briefly until
+     * the bridge hands it over (self-cancels once tokens stop changing). */
+    var schemeSettle = 0;
+    var schemeTimer = setInterval(function () {
+      schemeSettle += 1;
+      applyScheme();
+      if (schemeSettle >= 10 || (window.hudiy && window.hudiy.colorScheme)) { clearInterval(schemeTimer); }
+    }, 500);
     renderHeader();
     go('S0');
     syncKeyMode();
