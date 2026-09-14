@@ -1,38 +1,43 @@
 /* Hudiy Diagnostics overlay - 800x480 kiosk surface.
  *
  * Colour architecture (M3 + Okabe-Ito fallback, implemented 2026-09-14):
- *   - Every colour is a token reference, never a hardcoded hex outside :root.
+ *   - Every colour is a token reference, never a hardcoded hex outside :root
+ *     and body.scheme-light (the two allowed fallback blocks).
  *   - `--m3-*` holds the Material 3 scheme applied from `hudiy.colorScheme`
  *     by applyScheme() in diag.js (61 camelCase tokens -> --m3-kebab-case).
- *     The static values below are a dark fallback scheme drawn from the
- *     Okabe-Ito hues so the page renders correctly outside Hudiy (browser
- *     testing / shim-only) without any hardcoded-hex layer elsewhere.
+ *     The static values below are a dark fallback scheme; the bridge wins
+ *     over these values whenever the host injects the scheme.
  *   - The legacy Okabe-Ito severity vars (--ok/--warn/--bad/--info/--blue)
- *     are bound to M3 roles: ok -> tertiary, warn -> tertiary-container
- *     (Hudiy `warn` decision: M3 has no warn slot; tertiaryContainer is the
- *     dynamic carrier, fallback keeps the Okabe-Ito warn hue #E69F00),
+ *     are bound to M3 roles: ok -> tertiary, warn -> tertiary-container,
  *     bad -> error, info/blue -> primary. Mapped in applyScheme().
- *   - Translucent severity tints (--ok-line/-bg, --warn-line/-bg,
- *     --bad-line/-bg) are derived from the same tokens by applyScheme();
- *     the rgba(....) literals below are only their fallback values.
- *   - body.scheme-light is toggled from colorScheme.darkThemeEnabled and
- *     the --m3-* values then carry the light scheme; this class is a hook.
+ *   - Translucent severity tints (--ok-line/-bg, ...) are derived from the
+ *     same tokens by applyScheme(); the rgba literals below are fallbacks.
+ *   - body.scheme-light is toggled from colorScheme.darkThemeEnabled.
  * Severity is never colour-only: every colour carries a glyph and a word.
- * Source: docs/M3_UI_RESEARCH.md sections 1.3/4.2/4.3.
+ *
+ * Visual language (docs/HUDIY_UI_LANGUAGE.md, 14 Sep 2026):
+ *   - Pure-black page, flat borderless cards on surfaceContainer fills,
+ *     generous 20px radii. NO glass, NO blur, NO glow, NO borders on cards.
+ *   - Value-first typography: big numeric values (24-34px), small muted
+ *     labels. Hierarchy by size, not decoration.
+ *   - State via coloured dot/icon + value colour, never a left stripe.
+ *   - Buttons and chips are capsule/pill shapes; selected = full accent fill.
+ *   - Bottom row styled like Hudiy's persistent system bar: flat, chip-like.
+ * Source: docs/HUDIY_UI_LANGUAGE.md targets A-H, docs/M3_UI_RESEARCH.md.
  */
 
 :root {
   /* ---- M3 scheme layer (fallback scheme; live values from hudiy bridge) - */
-  --m3-background: #0E1113;
+  --m3-background: #000000;
   --m3-on-background: #F1F5F7;
-  --m3-surface: #0E1113;
+  --m3-surface: #000000;
   --m3-on-surface: #F1F5F7;
-  --m3-surface-dim: #1F262B;
+  --m3-surface-dim: #12141A;
   --m3-surface-bright: #2A3136;
-  --m3-surface-container-lowest: #0B0E10;
-  --m3-surface-container-low: #14191C;
-  --m3-surface-container: #171B1E;
-  --m3-surface-container-high: #1D2327;
+  --m3-surface-container-lowest: #0B0D11;
+  --m3-surface-container-low: #161A22;
+  --m3-surface-container: #1A1E26;
+  --m3-surface-container-high: #1E222A;
   --m3-surface-container-highest: #262E33;
   --m3-surface-variant: #262E33;
   --m3-on-surface-variant: #9AA6AC;
@@ -43,7 +48,7 @@
   --m3-inverse-primary: #56B4E9;
   --m3-shadow: #000000;
   --m3-scrim: #000000;
-  --m3-surface-tint: #0E1113;
+  --m3-surface-tint: #000000;
   --m3-primary: #56B4E9;              /* Okabe-Ito info     */
   --m3-on-primary: #00203A;
   --m3-primary-container: #00344C;
@@ -84,8 +89,9 @@
   --bg: var(--m3-background);
   --panel: var(--m3-surface-container);
   --panel-2: var(--m3-surface-container-high);
-  --line: var(--m3-outline-variant);
-  --line-soft: var(--m3-surface-dim);
+  --panel-deep: var(--m3-surface-container-low);
+  --line: var(--m3-outline-variant);        /* tokens kept for plumbing;   */
+  --line-soft: var(--m3-surface-dim);      /* painted anywhere flat.      */
   --ink: var(--m3-on-surface);
   --dim: var(--m3-on-surface-variant);
   --quiet: var(--m3-outline);
@@ -99,19 +105,15 @@
 
   --focus: var(--info);
   --focus-edge: 3px;   /* M3 focus indicator: 3dp outline, 2dp offset */
-  --radius: 10px;
-  --chrome-h: 52px;
+  --radius: 20px;      /* Hudiy: generous card radius */
+  --radius-pill: 999px;
+  --chrome-h: 56px;
   --actions-h: 68px;
   --mono: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
 
-body.scheme-light {
-  /* Light-mode hook: --m3-* values carry the light scheme; nothing to
-   * hardcode here — background/colour follow the M3 scheme layer via :root
-   * bindings. Text colours (dim/quiet) also follow --m3-on-surface-variant. */
-}
 html, body {
   margin: 0;
   padding: 0;
@@ -130,29 +132,32 @@ body {
 }
 
 body.scheme-light {
-  /* Light theme: the bridge already swapped --m3-* to the light scheme, so
-   * these only serve the no-bridge case (browser testing). */
-  --m3-background: #FAFAFA;
-  --m3-on-background: #14181B;
-  --m3-surface: #FAFAFA;
-  --m3-on-surface: #14181B;
-  --m3-surface-container: #F2F4F6;
-  --m3-surface-container-high: #E9EDF0;
+  /* Light-mode hook: --m3-* values carry the light scheme. These literals only
+   * serve the no-bridge case (browser testing), per Hudiy light themes:
+   * warm cream background, darker cream cards, dark-caramel accents-ink. */
+  --m3-background: #FAF3EA;
+  --m3-on-background: #2B2119;
+  --m3-surface: #FAF3EA;
+  --m3-on-surface: #2B2119;
   --m3-surface-container-lowest: #FFFFFF;
-  --m3-surface-container-low: #F7F9FA;
-  --m3-surface-dim: #E4E9EC;
-  --m3-outline: #5B666C;
-  --m3-outline-variant: #D3DADE;
-  --m3-on-surface-variant: #47555C;
-  --m3-inverse-surface: #14181B;
-  --m3-inverse-on-surface: #FAFAFA;
+  --m3-surface-container-low: #F3E8DA;
+  --m3-surface-container: #F0E3D3;
+  --m3-surface-container-high: #E9DCCB;
+  --m3-surface-container-highest: #E2D4C2;
+  --m3-surface-dim: #E7DACB;
+  --m3-surface-variant: #E2D4C2;
+  --m3-outline: #7A6A5A;
+  --m3-outline-variant: #DCCDBA;
+  --m3-on-surface-variant: #6B5B4B;
+  --m3-inverse-surface: #2B2119;
+  --m3-inverse-on-surface: #FAF3EA;
   --m3-primary-container: #CFE9FA;
   --m3-on-primary-container: #0B3B57;
 }
 
 #app {
   display: grid;
-  grid-template-rows: var(--chrome-h) 1fr var(--actions-h);
+  grid-template-rows: var(--chrome-h) 1fr auto var(--actions-h);
   width: 800px;
   height: 480px;
 }
@@ -164,8 +169,7 @@ body.scheme-light {
   align-items: center;
   gap: 10px;
   padding: 0 12px 0 6px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  background: transparent;   /* page owns the surface; flat, no border.  */
 }
 
 .icon-btn {
@@ -173,7 +177,7 @@ body.scheme-light {
   height: 44px;
   flex: 0 0 44px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--dim);
   font: 26px/1 system-ui, sans-serif;
@@ -183,18 +187,18 @@ body.scheme-light {
 .icon-btn:disabled { opacity: .3; }
 
 .titles { flex: 1 1 auto; min-width: 0; }
-.titles h1 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: .01em; }
+.titles h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: .01em; }
 .titles p { margin: 1px 0 0; font-size: 12px; color: var(--quiet); }
 
+/* state = dot + word on a flat tinted capsule (no borders, no stripes) */
 .tag {
   font: 600 10px/1 system-ui, sans-serif;
   letter-spacing: .09em;
   text-transform: uppercase;
   color: var(--warn);
-  border: 1px solid var(--warn-line);
   background: var(--warn-bg);
-  border-radius: 4px;
-  padding: 4px 6px;
+  border-radius: var(--radius-pill);
+  padding: 5px 10px;
 }
 
 .pill {
@@ -202,11 +206,11 @@ body.scheme-light {
   align-items: center;
   gap: 6px;
   max-width: 240px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   color: var(--dim);
+  background: var(--panel-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -229,12 +233,13 @@ body.scheme-light {
 
 #main { position: relative; overflow: hidden; }
 
-.screen { display: none; height: 100%; padding: 12px 12px 4px; }
-.screen.active { display: flex; flex-direction: column; gap: 10px; }
+.screen { display: none; height: 100%; padding: 12px 14px 6px; }
+.screen.active { display: flex; flex-direction: column; gap: 12px; }
 
-.scroll { overflow-y: auto; overscroll-behavior: contain; }
+.scroll { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { width: 0; height: 0; }
 
-.hint { margin: 2px 2px 0; font-size: 12px; color: var(--quiet); line-height: 1.45; }
+.hint { margin: 2px 4px 0; font-size: 12px; color: var(--quiet); line-height: 1.45; }
 
 .empty {
   margin: 18px 4px;
@@ -243,157 +248,182 @@ body.scheme-light {
   line-height: 1.5;
 }
 
-.stamp { margin: 0 2px; font-size: 11px; color: var(--quiet); }
+.stamp { margin: 0 4px; font-size: 11px; color: var(--quiet); }
 
 /* ---------------------------------------------------------------- hero */
 
+/* Hudiy hero: a big charcoal tile. State = coloured dot beside the value. */
 .hero {
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--quiet);
   border-radius: var(--radius);
   background: var(--panel);
-  padding: 14px 16px;
+  padding: 16px 18px;
 }
-.hero[data-state="online"] { border-left-color: var(--ok); }
-.hero[data-state="stale"], .hero[data-state="reconnecting"] { border-left-color: var(--warn); }
-.hero[data-state="offline"], .hero[data-state="unavailable"] { border-left-color: var(--bad); }
 
 .hero-kicker {
   margin: 0;
-  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--quiet);
 }
-.hero-state { margin: 6px 0 2px; font-size: 26px; font-weight: 600; }
+.hero-kicker::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--quiet);
+  flex: 0 0 8px;
+}
+.hero[data-state="online"] .hero-kicker::before { background: var(--ok); }
+.hero[data-state="stale"] .hero-kicker::before,
+.hero[data-state="reconnecting"] .hero-kicker::before { background: var(--warn); }
+.hero[data-state="offline"] .hero-kicker::before,
+.hero[data-state="unavailable"] .hero-kicker::before { background: var(--bad); }
+
+.hero-state { margin: 6px 0 2px; font-size: 30px; font-weight: 600; }
 .hero-note { margin: 0; font-size: 13px; color: var(--dim); }
 
 /* ---------------------------------------------------------------- verdict */
 
+/* Flat fill-only card, no border of any kind. */
 .card {
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
 
-.verdict { border-left: 4px solid var(--quiet); }
-.verdict[data-sev="ok"] { border-left-color: var(--ok); }
-.verdict[data-sev="warn"] { border-left-color: var(--warn); }
-.verdict[data-sev="bad"] { border-left-color: var(--bad); }
-.verdict[data-sev="info"] { border-left-color: var(--info); }
-
+/* State carried by a coloured dot on the kicker row + value colour. */
 .verdict-head { display: flex; align-items: baseline; gap: 10px; }
-.verdict-headline { margin: 0; font-size: 21px; font-weight: 600; flex: 1 1 auto; }
+.verdict-headline { margin: 0; font-size: 24px; font-weight: 600; flex: 1 1 auto; }
+.verdict[data-sev] .verdict-headline::before {
+  content: "";
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 10px;
+  background: var(--info);
+  vertical-align: 2px;
+}
+.verdict[data-sev="ok"] .verdict-headline::before { background: var(--ok); }
+.verdict[data-sev="warn"] .verdict-headline::before { background: var(--warn); }
+.verdict[data-sev="bad"] .verdict-headline::before { background: var(--bad); }
+
 .verdict-sub { margin: 6px 0 0; font-size: 13px; color: var(--dim); line-height: 1.45; }
 .verdict-rule { margin: 8px 0 0; font-size: 12px; color: var(--quiet); }
 
-.counts { display: flex; gap: 18px; margin-top: 10px; }
-.count { display: flex; flex-direction: column; gap: 1px; }
-.count b { font: 600 22px/1 var(--mono); }
+.counts { display: flex; gap: 22px; margin-top: 12px; }
+.count { display: flex; flex-direction: column; gap: 2px; }
+.count b { font: 600 26px/1 system-ui, sans-serif; }
 .count span { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--quiet); }
 .count[data-tone="bad"] b { color: var(--bad); }
 .count[data-tone="warn"] b { color: var(--warn); }
 .count[data-tone="ok"] b { color: var(--ok); }
+.count[data-tone="info"] b { color: var(--info); }
 
 /* ---------------------------------------------------------------- chips */
 
+/* Hudiy chip: pill, few glyphs, tinted fill, no outline. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid var(--line);
   color: var(--dim);
+  background: var(--panel-2);
   white-space: nowrap;
 }
-.chip-sev-ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-bg); }
-.chip-sev-warn { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
-.chip-sev-bad { color: var(--bad); border-color: var(--bad-line); background: var(--bad-bg); }
-.chip-sev-info { color: var(--info); border-color: var(--ok-line); background: var(--warn-bg); }
-.chip-sev-quiet { color: var(--quiet); border-color: var(--line); background: var(--panel-2); }
+.chip-sev-ok { color: var(--ok); background: var(--ok-bg); }
+.chip-sev-warn { color: var(--warn); background: var(--warn-bg); }
+.chip-sev-bad { color: var(--bad); background: var(--bad-bg); }
+.chip-sev-info { color: var(--info); background: var(--ok-bg); }
+.chip-sev-quiet { color: var(--quiet); background: var(--panel-2); }
 
 /* ---------------------------------------------------------------- tiles */
 
-.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+/* Metric tile: small gray label, BIG value, tiny muted sub. Hub tile values
+ * read like Hudiy dashboard channels - accent-coloured numerics. */
 .tile {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   text-align: left;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--panel-2);
   color: var(--ink);
-  padding: 10px 12px;
-  min-height: 74px;
+  padding: 12px 14px;
+  min-height: 84px;
   cursor: pointer;
 }
 .tile[disabled] { opacity: .45; }
-.tile-label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
-.tile-value { font: 600 24px/1.1 var(--mono); }
-.tile-value.small { font-size: 17px; font-variant-numeric: normal; }
-.tile-sub { font-size: 12px; color: var(--dim); }
+.tile-label { font-size: 12px; color: var(--quiet); }
+.tile-value { font: 600 28px/1.05 system-ui, sans-serif; color: var(--info); }
+.tile-value.small { font-size: 22px; }
+.tile-sub { font-size: 11px; color: var(--quiet); }
 .tile-corner {
   position: absolute;
-  top: 10px; right: 12px;
+  top: 12px; right: 14px;
   font-size: 11px;
   color: var(--quiet);
 }
 
 /* ---------------------------------------------------------------- tabs */
 
-.tabs { display: flex; gap: 6px; flex: 0 0 auto; }
+.tabs { display: flex; gap: 8px; flex: 0 0 auto; }
 
+/* Capsule/pill tabs: transparent surface; selected = full accent fill. */
 .tab {
-  border: 1px solid var(--line);
-  background: var(--panel);
+  border: 0;
+  background: var(--panel-2);
   color: var(--dim);
-  border-radius: 999px;
-  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  min-height: 36px;
+  min-height: 38px;
 }
-.tab[aria-selected="true"] { color: var(--ink); border-color: var(--dim); background: var(--panel-2); }
-.tab .n { color: var(--quiet); font-family: var(--mono); }
+.tab[aria-selected="true"] { color: var(--on-accent, var(--m3-on-primary)); background: var(--info); }
+.tab .n { color: inherit; opacity: .75; }
 
 /* ---------------------------------------------------------------- rows */
 
 .rows { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; }
-.rows li + li { margin-top: 6px; }
+.rows li + li { margin-top: 8px; }
 
 .row {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 46px;
+  min-height: 50px;
   text-align: left;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--radius);
   background: var(--panel);
   color: var(--ink);
   cursor: pointer;
 }
-.row.flat { cursor: default; }
-.row-code { font: 600 17px/1 var(--mono); flex: 0 0 auto; }
+.row.flat { cursor: default; background: var(--panel-deep); }
+.row-code { font: 600 18px/1 system-ui, sans-serif; flex: 0 0 auto; color: var(--info); }
 .row-main { flex: 1 1 auto; min-width: 0; }
 .row-text { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-sub { font-size: 12px; color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-value { font: 600 16px/1 var(--mono); flex: 0 0 auto; text-align: right; }
+.row-value { font: 600 18px/1 system-ui, sans-serif; flex: 0 0 auto; text-align: right; }
 .row-unit { font-size: 11px; color: var(--quiet); margin-left: 3px; }
-.row-group { font-size: 12px; color: var(--quiet); text-transform: uppercase; letter-spacing: .06em; margin: 10px 2px 2px; }
+.row-group { font-size: 12px; color: var(--quiet); text-transform: uppercase; letter-spacing: .06em; margin: 10px 4px 2px; }
 
 .group-title {
-  margin: 4px 2px 6px;
+  margin: 4px 4px 6px;
   font-size: 12px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -403,8 +433,8 @@ body.scheme-light {
 /* ---------------------------------------------------------------- detail */
 
 .detail-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.detail-code { font: 700 30px/1 var(--mono); letter-spacing: .01em; }
-.detail-block + .detail-block { margin-top: 10px; }
+.detail-code { font: 700 34px/1 system-ui, sans-serif; letter-spacing: .01em; color: var(--info); }
+.detail-block + .detail-block { margin-top: 12px; }
 .detail-block h3 {
   margin: 0 0 4px;
   font-size: 11px;
@@ -414,23 +444,22 @@ body.scheme-light {
 }
 .detail-block p { margin: 0; font-size: 14px; line-height: 1.45; }
 .detail-block p + p { margin-top: 4px; }
-.kv { display: flex; gap: 10px; font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
-.kv:last-child { border-bottom: 0; }
+.kv { display: flex; gap: 10px; font-size: 13px; padding: 5px 0; }
 .kv dt { flex: 0 0 132px; color: var(--quiet); margin: 0; }
-.kv dd { margin: 0; font-family: var(--mono); font-size: 13px; word-break: break-all; }
+.kv dd { margin: 0; color: var(--ink); word-break: break-all; }
 
 /* ---------------------------------------------------------------- scan */
 
-.card-scan { display: flex; flex-direction: column; gap: 12px; }
+.card-scan { display: flex; flex-direction: column; gap: 14px; }
 .scan-top { display: flex; align-items: baseline; justify-content: space-between; }
-.scan-label { margin: 0; font-size: 15px; font-weight: 600; }
-.scan-timer { margin: 0; font: 600 22px/1 var(--mono); color: var(--info); }
-.track { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.scan-label { margin: 0; font-size: 16px; font-weight: 600; }
+.scan-timer { margin: 0; font: 600 28px/1 system-ui, sans-serif; color: var(--info); }
+.track { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
 .track-fill {
   height: 100%;
   width: 30%;
   background: var(--info);
-  border-radius: 3px;
+  border-radius: 4px;
   animation: sweep 1.4s ease-in-out infinite;
 }
 @keyframes sweep {
@@ -439,15 +468,15 @@ body.scheme-light {
 }
 body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
 
-.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .steps li {
   font-size: 12px;
   color: var(--quiet);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 4px 10px;
+  background: var(--panel-2);
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
 }
-.steps li[data-done="1"] { color: var(--ok); border-color: var(--ok-line); }
+.steps li[data-done="1"] { color: var(--ok); background: var(--ok-bg); }
 .scan-cap {
   margin: 0;
   font-size: 11px;
@@ -462,44 +491,45 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
 .report {
   flex: 1 1 auto;
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--m3-surface-container-lowest);
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--panel-deep);
   color: var(--ink);
   font: 12px/1.45 var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
-.settings { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--dim); }
+.settings { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; color: var(--dim); }
 .settings .seg { display: flex; gap: 6px; align-items: center; }
 .settings .seg span { color: var(--quiet); }
 
 /* ---------------------------------------------------------------- actions */
 
+/* Hudiy's persistent bottom system bar: flat on black, capsule chips. */
 .actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px 12px;
-  border-top: 1px solid var(--line);
-  background: var(--panel);
+  gap: 10px;
+  padding: 10px 14px 14px;
+  background: var(--bg);
 }
 .actions .grow { flex: 1 1 auto; }
 .actions .note { font-size: 11px; color: var(--quiet); }
 
 .btn {
   min-height: 48px;
-  padding: 0 18px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
+  padding: 0 20px;
+  border-radius: var(--radius-pill);
+  border: 0;
   background: var(--panel-2);
   color: var(--ink);
   font: 600 15px/1 system-ui, sans-serif;
   cursor: pointer;
 }
 .btn[disabled] { opacity: .4; cursor: default; }
-.btn-primary { background: var(--m3-inverse-surface); color: var(--m3-inverse-on-surface); border-color: var(--m3-inverse-surface); }
+/* Primary action = full accent capsule, like Hudiy's selected pill. */
+.btn-primary { background: var(--info); color: var(--m3-on-primary); }
 .btn-quiet { background: transparent; color: var(--dim); }
 
 /* ---------------------------------------------------------------- focus */
@@ -520,16 +550,57 @@ body:not(.kb) .ctl:focus { outline: none; }
   bottom: 84px;
   transform: translateX(-50%);
   max-width: 620px;
-  padding: 9px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--panel-2);
+  padding: 10px 16px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--m3-surface-container-highest);
   color: var(--ink);
   font-size: 13px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
 }
-.toast[data-sev="bad"] { border-color: var(--bad-line); }
-.toast[data-sev="warn"] { border-color: var(--warn-line); }
+.toast[data-sev="bad"] { color: var(--bad); background: var(--bad-bg); }
+.toast[data-sev="warn"] { color: var(--warn); background: var(--warn-bg); }
+
+/* ----------------------------------------------------------------- statebar */
+
+/* Hudiy-chip bottom state row (target F): pill chips on the page surface,
+ * dot + short word for every state, no borders. Sits above the action bar. */
+.statebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: var(--bg);
+}
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-2);
+  font-size: 12px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.state-chip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--quiet);
+  flex: 0 0 8px;
+}
+.state-chip[data-sev="ok"] { color: var(--ok); background: var(--ok-bg); }
+.state-chip[data-sev="ok"] i { background: var(--ok); color: inherit; }
+.state-chip[data-sev="warn"] { color: var(--warn); background: var(--warn-bg); }
+.state-chip[data-sev="warn"] i { background: var(--warn); color: inherit; }
+.state-chip[data-sev="bad"] { color: var(--bad); background: var(--bad-bg); }
+.state-chip[data-sev="bad"] i { background: var(--bad); color: inherit; }
+.state-chip[data-sev="info"] { color: var(--info); background: var(--ok-bg); }
+.state-chip[data-sev="info"] i { background: var(--info); color: inherit; }
+.statebar .grow { flex: 1 1 auto; }
 
 /* ----------------------------------------------------------------- exit */
 

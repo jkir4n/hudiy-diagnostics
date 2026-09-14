@@ -279,6 +279,49 @@
     var replay = (host && host.source === 'replay') || (obd && obd.fixture);
     $('modeTag').hidden = !replay;
     if (replay) { $('modeTag').textContent = 'Replay data'; }
+    renderStateBar();
+  }
+
+  /* Hudiy-chip bottom state row (HUDIY_UI_LANGUAGE target F): two live pill
+   * chips (ECU link state, last scan outcome) plus a static scope chip.
+   * Same severity mapping as everywhere else: dot + colour, never colour
+   * alone - the chip also carries a short word. */
+  var STATE_SEV = {
+    online: 'ok', scanning: 'info', stale: 'warn', reconnecting: 'warn',
+    offline: 'bad', unavailable: 'bad', unknown: 'quiet'
+  };
+
+  function setChip(id, sev, word, title) {
+    var chipEl = $(id);
+    chipEl.setAttribute('data-sev', sev || 'quiet');
+    chipEl.title = title || word;
+    clear(chipEl);
+    var dot = document.createElement('i');
+    dot.setAttribute('aria-hidden', 'true');
+    chipEl.appendChild(dot);
+    chipEl.appendChild(document.createTextNode(word));
+  }
+
+  function renderStateBar() {
+    var obd = S.health && S.health.obd ? S.health.obd : null;
+    var state = obd && obd.state ? obd.state : 'unknown';
+    if (S.busy && state === 'unknown') { state = 'scanning'; }
+    setChip('chipLink', STATE_SEV[state], LINK_WORD[state] || ('Link: ' + state),
+      'ECU link ' + state);
+    var scanSev = 'quiet';
+    var scanWord = 'No scan yet';
+    if (S.busy) { scanSev = 'info'; scanWord = 'Scanning\u2026'; }
+    else if (S.degraded) { scanSev = 'bad'; scanWord = 'Scan failed'; }
+    else if (S.scan) {
+      var ready = S.scan.report && S.scan.report.readiness ? S.scan.report.readiness : null;
+      var sev = ready ? sevFromVerdict(ready.verdict) : 'info';
+      scanSev = sev === 'quiet' ? 'info' : sev;
+      scanWord = 'Scan ' + (ready ? verdictWord(ready.verdict) : 'read');
+    }
+    setChip('chipScan', scanSev, scanWord,
+      S.scan ? ('Last scan: ' + (S.scan.summary || 'complete')) : 'No scan has run yet');
+    var scope = S.scope === 'quick' ? 'Quick scope' : 'Full scope';
+    setChip('chipInfo', 'quiet', scope, 'Scan scope setting lives on the Report screen');
   }
 
   /* ------------------------------------------------------------- S0 home */
