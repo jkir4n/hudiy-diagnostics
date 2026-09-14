@@ -1,6 +1,9 @@
 # Material 3 Research for the Hudiy Diagnostics Webview
 
-**Status:** RESEARCH ONLY — parked. No implementation in this doc.
+**Status:** IMPLEMENTED 2026-09-14 — colour-token layer (61 bridge tokens,
+Okabe-Ito fallback scheme, scheme-light toggle, warn = tertiaryContainer).
+Parked/deferred parts (see §5): component-geometry rework, typography scale
+tokens, elevation tokens.
 **Date:** 2026-09-11
 **Target surface:** `frontend/diag.html` / `diag.css` — 800x480 landscape overlay webview
 (kiosk grid: 52px chrome / 1fr main / 68px actions), dark theme primary.

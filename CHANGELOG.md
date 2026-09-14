@@ -2,6 +2,26 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-14 — Material 3 colour-token layer (frontend theming)
+
+### Changed
+- `frontend/diag.css`: every colour is now a token reference. New `--m3-*`
+  M3 scheme layer (~50 custom properties covering all 61 bridge
+  colourScheme roles + fixed variants) with a static dark Okabe-Ito
+  fallback scheme; `--ok/--warn/--bad/--info/--blue` and the surface/text
+  vars bind to it. Translucent severity tints (`--ok-line/-bg`,
+  `--warn-line/-bg`, `--bad-line/-bg`) replace inline `rgba(...)` literals.
+  `body.scheme-light` now carries a static light fallback scheme instead
+  of hardcoded greys. Focus ring is 3px per the M3 focus-indicator spec.
+- `frontend/diag.js`: `applyScheme()` consumes all string hex tokens on
+  `hudiy.colorScheme` (was 3 of 61) into the `--m3-*` layer, re-derives
+  severity tints (ok=tertiary, warn=tertiaryContainer, bad=error,
+  info=primary), toggles `body.scheme-light` from `darkThemeEnabled`, and
+  restores Okabe-Ito tints when the bridge is absent (TEST-BOTH-PATHS).
+
+### Not done (documented in docs/M3_UI_RESEARCH.md §5)
+- Component geometry, typography scale tokens, elevation tokens.
+
 ## 2026-09-11 — one-line install path
 
 ### Added

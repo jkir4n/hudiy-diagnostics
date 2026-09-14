@@ -1,30 +1,104 @@
 /* Hudiy Diagnostics overlay - 800x480 kiosk surface.
  *
- * Severity colour comes from the Okabe-Ito safe palette and nothing else:
- *   ok #009E73, warn #E69F00, bad #D55E00, info #56B4E9, blue #0072B2.
+ * Colour architecture (M3 + Okabe-Ito fallback, implemented 2026-09-14):
+ *   - Every colour is a token reference, never a hardcoded hex outside :root.
+ *   - `--m3-*` holds the Material 3 scheme applied from `hudiy.colorScheme`
+ *     by applyScheme() in diag.js (61 camelCase tokens -> --m3-kebab-case).
+ *     The static values below are a dark fallback scheme drawn from the
+ *     Okabe-Ito hues so the page renders correctly outside Hudiy (browser
+ *     testing / shim-only) without any hardcoded-hex layer elsewhere.
+ *   - The legacy Okabe-Ito severity vars (--ok/--warn/--bad/--info/--blue)
+ *     are bound to M3 roles: ok -> tertiary, warn -> tertiary-container
+ *     (Hudiy `warn` decision: M3 has no warn slot; tertiaryContainer is the
+ *     dynamic carrier, fallback keeps the Okabe-Ito warn hue #E69F00),
+ *     bad -> error, info/blue -> primary. Mapped in applyScheme().
+ *   - Translucent severity tints (--ok-line/-bg, --warn-line/-bg,
+ *     --bad-line/-bg) are derived from the same tokens by applyScheme();
+ *     the rgba(....) literals below are only their fallback values.
+ *   - body.scheme-light is toggled from colorScheme.darkThemeEnabled and
+ *     the --m3-* values then carry the light scheme; this class is a hook.
  * Severity is never colour-only: every colour carries a glyph and a word.
- * The surface itself is neutral; colour is reserved for meaning.
- * Focus ring colour prefers the live Hudiy colour scheme and falls back to
- * the palette blue when the page runs outside Hudiy (browser testing).
+ * Source: docs/M3_UI_RESEARCH.md sections 1.3/4.2/4.3.
  */
 
 :root {
-  --ok: #009E73;
-  --warn: #E69F00;
-  --bad: #D55E00;
-  --info: #56B4E9;
-  --blue: #0072B2;
+  /* ---- M3 scheme layer (fallback scheme; live values from hudiy bridge) - */
+  --m3-background: #0E1113;
+  --m3-on-background: #F1F5F7;
+  --m3-surface: #0E1113;
+  --m3-on-surface: #F1F5F7;
+  --m3-surface-dim: #1F262B;
+  --m3-surface-bright: #2A3136;
+  --m3-surface-container-lowest: #0B0E10;
+  --m3-surface-container-low: #14191C;
+  --m3-surface-container: #171B1E;
+  --m3-surface-container-high: #1D2327;
+  --m3-surface-container-highest: #262E33;
+  --m3-surface-variant: #262E33;
+  --m3-on-surface-variant: #9AA6AC;
+  --m3-outline: #6C787E;
+  --m3-outline-variant: #262E33;
+  --m3-inverse-surface: #F1F5F7;
+  --m3-inverse-on-surface: #0E1113;
+  --m3-inverse-primary: #56B4E9;
+  --m3-shadow: #000000;
+  --m3-scrim: #000000;
+  --m3-surface-tint: #0E1113;
+  --m3-primary: #56B4E9;              /* Okabe-Ito info     */
+  --m3-on-primary: #00203A;
+  --m3-primary-container: #00344C;
+  --m3-on-primary-container: #56B4E9;
+  --m3-secondary: #9AA6AC;
+  --m3-on-secondary: #14191C;
+  --m3-secondary-container: #262E33;
+  --m3-on-secondary-container: #F1F5F7;
+  --m3-tertiary: #009E73;             /* Okabe-Ito ok       */
+  --m3-on-tertiary: #00201A;
+  --m3-tertiary-container: #E69F00;   /* Okabe-Ito warn hue (dynamic warn) */
+  --m3-on-tertiary-container: #2B1A00;
+  --m3-error: #D55E00;                /* Okabe-Ito bad      */
+  --m3-on-error: #FFF3E6;
+  --m3-error-container: #7A3A10;
+  --m3-on-error-container: #FFF3E6;
+  /* fixed variants: required by the token set; unused by this UI (gap #10). */
+  --m3-primary-fixed: #56B4E9;
+  --m3-primary-fixed-dim: #2B92CB;
+  --m3-on-primary-fixed: #00203A;
+  --m3-on-primary-fixed-variant: #00344C;
+  --m3-secondary-fixed: #262E33;
+  --m3-secondary-fixed-dim: #1F262B;
+  --m3-on-secondary-fixed: #F1F5F7;
+  --m3-on-secondary-fixed-variant: #9AA6AC;
+  --m3-tertiary-fixed: #009E73;
+  --m3-tertiary-fixed-dim: #007A59;
+  --m3-on-tertiary-fixed: #00201A;
+  --m3-on-tertiary-fixed-variant: #004A36;
 
-  --bg: #0E1113;
-  --panel: #171B1E;
-  --panel-2: #1D2327;
-  --line: #262E33;
-  --line-soft: #1F262B;
-  --ink: #F1F5F7;
-  --dim: #9AA6AC;
-  --quiet: #6C787E;
+  /* ---- severity + surface tokens consumed by every rule below ---------- */
+  --ok: var(--m3-tertiary);
+  --warn: var(--m3-tertiary-container);
+  --bad: var(--m3-error);
+  --info: var(--m3-primary);
+  --blue: var(--m3-primary);
+
+  --bg: var(--m3-background);
+  --panel: var(--m3-surface-container);
+  --panel-2: var(--m3-surface-container-high);
+  --line: var(--m3-outline-variant);
+  --line-soft: var(--m3-surface-dim);
+  --ink: var(--m3-on-surface);
+  --dim: var(--m3-on-surface-variant);
+  --quiet: var(--m3-outline);
+
+  --ok-line: rgba(0, 158, 115, .5);
+  --ok-bg: rgba(0, 158, 115, .12);
+  --warn-line: rgba(230, 159, 0, .5);
+  --warn-bg: rgba(230, 159, 0, .12);
+  --bad-line: rgba(213, 94, 0, .55);
+  --bad-bg: rgba(213, 94, 0, .13);
 
   --focus: var(--info);
+  --focus-edge: 3px;   /* M3 focus indicator: 3dp outline, 2dp offset */
   --radius: 10px;
   --chrome-h: 52px;
   --actions-h: 68px;
@@ -33,6 +107,11 @@
 
 * { box-sizing: border-box; }
 
+body.scheme-light {
+  /* Light-mode hook: --m3-* values carry the light scheme; nothing to
+   * hardcode here — background/colour follow the M3 scheme layer via :root
+   * bindings. Text colours (dim/quiet) also follow --m3-on-surface-variant. */
+}
 html, body {
   margin: 0;
   padding: 0;
@@ -50,7 +129,26 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-body.scheme-light { background: #FAFAFA; color: #14181B; }
+body.scheme-light {
+  /* Light theme: the bridge already swapped --m3-* to the light scheme, so
+   * these only serve the no-bridge case (browser testing). */
+  --m3-background: #FAFAFA;
+  --m3-on-background: #14181B;
+  --m3-surface: #FAFAFA;
+  --m3-on-surface: #14181B;
+  --m3-surface-container: #F2F4F6;
+  --m3-surface-container-high: #E9EDF0;
+  --m3-surface-container-lowest: #FFFFFF;
+  --m3-surface-container-low: #F7F9FA;
+  --m3-surface-dim: #E4E9EC;
+  --m3-outline: #5B666C;
+  --m3-outline-variant: #D3DADE;
+  --m3-on-surface-variant: #47555C;
+  --m3-inverse-surface: #14181B;
+  --m3-inverse-on-surface: #FAFAFA;
+  --m3-primary-container: #CFE9FA;
+  --m3-on-primary-container: #0B3B57;
+}
 
 #app {
   display: grid;
@@ -93,8 +191,8 @@ body.scheme-light { background: #FAFAFA; color: #14181B; }
   letter-spacing: .09em;
   text-transform: uppercase;
   color: var(--warn);
-  border: 1px solid rgba(230, 159, 0, .45);
-  background: rgba(230, 159, 0, .12);
+  border: 1px solid var(--warn-line);
+  background: var(--warn-bg);
   border-radius: 4px;
   padding: 4px 6px;
 }
@@ -212,10 +310,10 @@ body.scheme-light { background: #FAFAFA; color: #14181B; }
   color: var(--dim);
   white-space: nowrap;
 }
-.chip-sev-ok { color: var(--ok); border-color: rgba(0, 158, 115, .5); background: rgba(0, 158, 115, .12); }
-.chip-sev-warn { color: var(--warn); border-color: rgba(230, 159, 0, .5); background: rgba(230, 159, 0, .12); }
-.chip-sev-bad { color: var(--bad); border-color: rgba(213, 94, 0, .55); background: rgba(213, 94, 0, .13); }
-.chip-sev-info { color: var(--info); border-color: rgba(86, 180, 233, .5); background: rgba(86, 180, 233, .12); }
+.chip-sev-ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-bg); }
+.chip-sev-warn { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.chip-sev-bad { color: var(--bad); border-color: var(--bad-line); background: var(--bad-bg); }
+.chip-sev-info { color: var(--info); border-color: var(--ok-line); background: var(--warn-bg); }
 .chip-sev-quiet { color: var(--quiet); border-color: var(--line); background: var(--panel-2); }
 
 /* ---------------------------------------------------------------- tiles */
@@ -349,7 +447,7 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
   border-radius: 999px;
   padding: 4px 10px;
 }
-.steps li[data-done="1"] { color: var(--ok); border-color: rgba(0, 158, 115, .45); }
+.steps li[data-done="1"] { color: var(--ok); border-color: var(--ok-line); }
 .scan-cap {
   margin: 0;
   font-size: 11px;
@@ -367,7 +465,7 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #0B0E10;
+  background: var(--m3-surface-container-lowest);
   color: var(--ink);
   font: 12px/1.45 var(--mono);
   white-space: pre-wrap;
@@ -401,17 +499,17 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
   cursor: pointer;
 }
 .btn[disabled] { opacity: .4; cursor: default; }
-.btn-primary { background: var(--ink); color: #10141A; border-color: var(--ink); }
+.btn-primary { background: var(--m3-inverse-surface); color: var(--m3-inverse-on-surface); border-color: var(--m3-inverse-surface); }
 .btn-quiet { background: transparent; color: var(--dim); }
 
 /* ---------------------------------------------------------------- focus */
 
 .ctl.focused, .tile.focused, .row.focused, .tab.focused, .btn.focused, .icon-btn.focused {
-  outline: 2px solid var(--focus);
+  outline: var(--focus-edge, 2px) solid var(--focus);
   outline-offset: 2px;
 }
 
-body:not(.kb) .ctl:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+body:not(.kb) .ctl:focus-visible { outline: var(--focus-edge, 2px) solid var(--focus); outline-offset: 2px; }
 body:not(.kb) .ctl:focus { outline: none; }
 
 /* ---------------------------------------------------------------- toast */
@@ -430,8 +528,8 @@ body:not(.kb) .ctl:focus { outline: none; }
   font-size: 13px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
 }
-.toast[data-sev="bad"] { border-color: rgba(213, 94, 0, .6); }
-.toast[data-sev="warn"] { border-color: rgba(230, 159, 0, .6); }
+.toast[data-sev="bad"] { border-color: var(--bad-line); }
+.toast[data-sev="warn"] { border-color: var(--warn-line); }
 
 /* ----------------------------------------------------------------- exit */
 

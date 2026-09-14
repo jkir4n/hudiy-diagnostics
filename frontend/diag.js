@@ -1306,13 +1306,125 @@
     }
   }
 
+  /* Material 3 scheme consumption (docs/M3_UI_RESEARCH.md sections 1.3/4.2/4.3).
+   * Every camelCase token on hudiy.colorScheme maps to a --m3-kebab-case CSS
+   * custom property; diag.css binds its legacy vars (--ok/--warn/--bad/--info,
+   * --bg/--panel/--line/--ink/...) to those custom properties with the
+   * Okabe-Ito fallback scheme as static values, so the page renders correctly
+   * with or without the Hudiy bridge (TEST-BOTH-PATHS). Only tokens that are
+   * present get written; each set re-derives the translucent severity tints.
+   * Palette-key colors (primaryPaletteKeyColor etc.) are seed swatches, NOT
+   * presentation colors — deliberately not mapped. */
+  var M3_CSS_BY_HUDIY = {
+    background: "--m3-background",
+    onBackground: "--m3-on-background",
+    surface: "--m3-surface",
+    onSurface: "--m3-on-surface",
+    surfaceDim: "--m3-surface-dim",
+    surfaceBright: "--m3-surface-bright",
+    surfaceContainerLowest: "--m3-surface-container-lowest",
+    surfaceContainerLow: "--m3-surface-container-low",
+    surfaceContainer: "--m3-surface-container",
+    surfaceContainerHigh: "--m3-surface-container-high",
+    surfaceContainerHighest: "--m3-surface-container-highest",
+    surfaceVariant: "--m3-surface-variant",
+    onSurfaceVariant: "--m3-on-surface-variant",
+    inverseSurface: "--m3-inverse-surface",
+    inverseOnSurface: "--m3-inverse-on-surface",
+    inversePrimary: "--m3-inverse-primary",
+    outline: "--m3-outline",
+    outlineVariant: "--m3-outline-variant",
+    shadow: "--m3-shadow",
+    scrim: "--m3-scrim",
+    surfaceTint: "--m3-surface-tint",
+    primary: "--m3-primary",
+    onPrimary: "--m3-on-primary",
+    primaryContainer: "--m3-primary-container",
+    onPrimaryContainer: "--m3-on-primary-container",
+    secondary: "--m3-secondary",
+    onSecondary: "--m3-on-secondary",
+    secondaryContainer: "--m3-secondary-container",
+    onSecondaryContainer: "--m3-on-secondary-container",
+    tertiary: "--m3-tertiary",
+    onTertiary: "--m3-on-tertiary",
+    tertiaryContainer: "--m3-tertiary-container",
+    onTertiaryContainer: "--m3-on-tertiary-container",
+    error: "--m3-error",
+    onError: "--m3-on-error",
+    errorContainer: "--m3-error-container",
+    onErrorContainer: "--m3-on-error-container",
+    primaryFixed: "--m3-primary-fixed",
+    primaryFixedDim: "--m3-primary-fixed-dim",
+    onPrimaryFixed: "--m3-on-primary-fixed",
+    onPrimaryFixedVariant: "--m3-on-primary-fixed-variant",
+    secondaryFixed: "--m3-secondary-fixed",
+    secondaryFixedDim: "--m3-secondary-fixed-dim",
+    onSecondaryFixed: "--m3-on-secondary-fixed",
+    onSecondaryFixedVariant: "--m3-on-secondary-fixed-variant",
+    tertiaryFixed: "--m3-tertiary-fixed",
+    tertiaryFixedDim: "--m3-tertiary-fixed-dim",
+    onTertiaryFixed: "--m3-on-tertiary-fixed",
+    onTertiaryFixedVariant: "--m3-on-tertiary-fixed-variant"
+  };
+
   function applyScheme() {
     var scheme = H.colorScheme;
-    if (!scheme) { return; }
     var root = document.documentElement.style;
-    if (scheme.outline) { root.setProperty('--focus', scheme.outline); }
-    if (scheme.surfaceContainer) { root.setProperty('--panel', scheme.surfaceContainer); }
-    if (scheme.onSurface) { root.setProperty('--ink', scheme.onSurface); }
+    if (!scheme) {
+      /* No host scheme (browser testing / shim-only): restore the fallback
+       * severity tints built from the Okabe-Ito hues in diag.css. */
+      root.setProperty("--ok-line", "rgba(0, 158, 115, .5)");
+      root.setProperty("--ok-bg", "rgba(0, 158, 115, .12)");
+      root.setProperty("--warn-line", "rgba(230, 159, 0, .5)");
+      root.setProperty("--warn-bg", "rgba(230, 159, 0, .12)");
+      root.setProperty("--bad-line", "rgba(213, 94, 0, .55)");
+      root.setProperty("--bad-bg", "rgba(213, 94, 0, .13)");
+      document.body.classList.remove("scheme-light");
+      return;
+    }
+    var kebab = function (name) {
+      return "--m3-" + name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+    };
+    var n, v;
+    for (n in scheme) {
+      if (typeof scheme[n] !== "string" || n === "darkThemeEnabled") { continue; }
+      if (!/^#[0-9A-Fa-f]{3,8}$/.test(scheme[n])) { continue; }
+      v = M3_CSS_BY_HUDIY[n] || kebab(n);
+      root.setProperty(v, scheme[n]);
+    }
+    /* Severity role bindings and their translucent carrier tints:
+     * ok -> tertiary, warn -> tertiaryContainer (M3 has no warn slot; warn
+     * rides the dynamic tertiaryContainer), bad -> error, info/blue -> primary. */
+    function hexToRgba(hex, alpha) {
+      var h = hex.replace("#", "");
+      if (h.length === 3) { h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; }
+      if (h.length === 8) { h = h.slice(0, 6); }
+      var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16),
+          b = parseInt(h.slice(4, 6), 16);
+      if (isNaN(r) || isNaN(g) || isNaN(b)) { return null; }
+      return "rgba(" + r + ", " + g + ", " + b + ", " + alpha + ")";
+    }
+    var okT = scheme.tertiary, warnT = scheme.tertiaryContainer ||
+      scheme.primaryContainer || scheme.secondaryContainer,
+      badT = scheme.error || scheme.errorContainer,
+      infoT = scheme.primary || scheme.secondary;
+    var pairs = [
+      [okT, "--ok-line", "--ok-bg", .5, .12],
+      [warnT, "--warn-line", "--warn-bg", .5, .12],
+      [badT, "--bad-line", "--bad-bg", .55, .13],
+      [infoT, "--info-line", "--info-bg" , .5, .12]
+    ];
+    var i, base, c;
+    for (i = 0; i < pairs.length; i++) {
+      base = pairs[i][0];
+      if (typeof base !== "string" || !/^#[0-9A-Fa-f]{3,8}$/.test(base)) { continue; }
+      c = hexToRgba(base, pairs[i][3]);
+      if (c) { root.setProperty(pairs[i][1], c); }
+      c = hexToRgba(base, pairs[i][4]);
+      if (c) { root.setProperty(pairs[i][2], c); }
+    }
+    document.documentElement.classList.toggle("scheme-light", !scheme.darkThemeEnabled);
+    document.body.classList.toggle("scheme-light", !scheme.darkThemeEnabled);
   }
 
   /* ------------------------------------------------------- input: keyboard */
