@@ -2,6 +2,18 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-14 — Publish readiness: privacy gate executed + universality pass (NOT published)
+
+### Changed (privacy scrub — see `docs/GITHUB_PUBLISH_PRIVACY_GATE.md`)
+- Reference-vehicle identity scrubbed: VIN / CAL-ID / CVN replaced with synthetic placeholders across raw + decoded fixtures, `docs/DECODED_FIXTURES.md`, `docs/V1_SPEC.md`, tests, README and this changelog; multi-frame hex payloads recomputed byte-consistently.
+- Topology genericised: tailnet address -> `car@<PI-IP>` placeholder; `/home/<user>/...` -> `~/...`; owner name/handles and dev-machine references removed from docs and comments.
+- `docs/GITHUB_PUBLISH_PRIVACY_GATE.md` rewritten as an executed checklist with re-audit tooling (`tools/privacy_audit.sh` + local-only `tools/privacy-patterns.local`, gitignored) and the fresh-history push recipe (pre-scrub tag: `pre-scrub-2026-09-14`).
+- `tools/keyboard_shim.py` universalised: `DIAG_SHIM_DEVICE`, `DIAG_SHIM_LANE_STATUS` / `DIAG_HTTP_PORT`, `DIAG_SHIM_CDP` overrides; an absent knob device now waits quietly instead of exiting (no restart loop on knobless installs).
+- Minor: stale vehicle-model remark removed from `decoders.py`; stale shim install note corrected.
+
+### Verified
+- Backend test suite green — same counts as pre-scrub (2 skipped: real `Api_pb2` only where present); re-audit greps all zero; replay smoke serves `/health`, `/app/*`, and a report whose VIN is the synthetic placeholder.
+
 ## 2026-09-14 — link chip froze at "unknown" on the car (frontend hotfix)
 
 ### Fixed
@@ -62,7 +74,7 @@ All notable changes. Format: date — phase — what.
 - True knob map captured per-direction (the earlier 1/2/3-chain guess was
   wrong): code 2 = detent LEFT (prev), code 3 = detent RIGHT (next), code 28
   (ENTER) = knob center press, code 1 (ESC) = back fallback. Device = Elecrow
-  knob per the owner; turns are scroll left/right, click is enter.
+  knob (owner-observed); turns are scroll left/right, click is enter.
 - `frontend/diag.js`: self-contained `window.__diagKeyNav()` — walks the
   active screen's visible `.ctl` nodes + the global `#actions` bar + the
   top-bar `#back` button, paints the `.focused` ring, wraps around, activates
@@ -106,7 +118,7 @@ All notable changes. Format: date — phase — what.
 - `fixtures/probe_round5_method.py` — probe client reference implementation.
 
 ### Learned (key findings)
-- VIN `WVWZZZ1KZAW555555`; ECM "ECM-EngineControl" (diesel VW).
+- VIN `WVWZZZ1KZAW555555` (synthetic placeholder — scrubbed); ECM "ECM-EngineControl" (diesel VW).
 - Supported PIDs (round-1 capture): 01 04 05 0B 0C 0D 0F 10 11 13 1C 1F 20 / 21 23 24 2C 2D 30 31 33 40.
 - Mode 09 supports INFOTYPEs 02 (VIN), 04 (CALID), 06 (CVN), 0A (ECU name).
 - Mode 03 + 07 clean at capture (no DTCs); Mode 06 monitor data captured for O2/EGR/boost OBDMIDs.
@@ -153,7 +165,7 @@ All notable changes. Format: date — phase — what.
 - `backend/deploy/hudiy-diagnostics.service` + `backend/deploy/install.sh` — user units (race-dash pattern, no root, nothing autolaunches: the app is started from the Hudiy menu), idempotent installer (`--dry-run`, `--uninstall`) that copies `backend/`+`fixtures/`, enables the unit and polls `/health`; per-instance settings in `~/.config/hudiy-diagnostics/env`.
 - `backend/README.md` — run modes, endpoint table, degradation rules, env reference, tests, deploy.
 - `GET /scan?sections=` — run one phase on its own (`discovery`, `dtc`, `pending`, `readiness`, `mode06`, `identity`, `live`); no filter = full scan (unchanged behaviour).
-- Proxy-lane bridge, end to end: the race-dash charts app gained `POST /diag/obd` (a route on the listener it already owns, so no second port and no second OBD client) and the diagnostics side now defaults to it — `DIAG_MODE=bridge` + `DIAG_CHARTS_BRIDGE_URL=http://127.0.0.1:44411/diag/obd` in `backend/diag/config.py`, the `install.sh` env template, `backend/README.md` and `docs/HUDIY_UI_API_INVENTORY.md`. Deployed to the reference install after confirming the live `charts.py` matched the captured copy byte-for-byte (backed up to `~/backups/charts.py.pre-diag-bridge.bak`, card path `/tmp/charts.py.bak-2026-09-10`); `~/.config/hudiy-diagnostics/env` written with the bridge mode, unit deliberately left unstarted. Verified live by driving the lane's own `BridgeHost` + decoders through the bridge against the running engine (support bitmap, rpm, multi-frame VIN reassembly, 0 DTCs, `0A00` = no data) with the charts SSE stream serving concurrently. Race-dash change is branch `diag-bridge` in the race-dash repo (patch exported — the the dev workstation checkout is the upstream of record).
+- Proxy-lane bridge, end to end: the race-dash charts app gained `POST /diag/obd` (a route on the listener it already owns, so no second port and no second OBD client) and the diagnostics side now defaults to it — `DIAG_MODE=bridge` + `DIAG_CHARTS_BRIDGE_URL=http://127.0.0.1:44411/diag/obd` in `backend/diag/config.py`, the `install.sh` env template, `backend/README.md` and `docs/HUDIY_UI_API_INVENTORY.md`. Deployed to the reference install after confirming the live `charts.py` matched the captured copy byte-for-byte (backed up to `~/backups/charts.py.pre-diag-bridge.bak`, card path `/tmp/charts.py.bak-2026-09-10`); `~/.config/hudiy-diagnostics/env` written with the bridge mode, unit deliberately left unstarted. Verified live by driving the lane's own `BridgeHost` + decoders through the bridge against the running engine (support bitmap, rpm, multi-frame VIN reassembly, 0 DTCs, `0A00` = no data) with the charts SSE stream serving concurrently. Race-dash change is branch `diag-bridge` in the race-dash repo (patch exported — the dev-workstation checkout is the upstream of record).
 
 ### Fixed
 - `report.py` text/csv renderers crashed on every real report: they treated the PID-support *map* (`{"0100": [4,5,...]}`) as a flat list and formatted its keys with `0x%02X`. Now rendered via `_hex_list` (int or pre-formatted), and CSV gained the support/`self-test` rows it was missing, so a CSV reader can also see what the car answered.

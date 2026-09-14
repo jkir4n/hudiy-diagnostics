@@ -19,7 +19,7 @@ actually reaching our overlay page) is owed by the frontend card's bench test.
 | MEDIA_MENU / NAVIGATION_MENU / VOICE_COMMAND | 19-21 | menus / voice |
 | **TOGGLE_INPUT_FOCUS** | **23** | toggles whether the PAGE or Hudiy's native UI holds input focus |
 
-**Device note (11 Sep, device-observed by the owner):** on our head unit the scroll
+**Device note (11 Sep, device-observed):** on our head unit the scroll
 wheel appears to dispatch **1 and 2** (UP/DOWN semantics) rather than 5-6
 (SCROLL_*) - or the wheel's keypresses are translated UP/DOWN somewhere before
 the webview. Unresolved until the CDP probe on the overlay webview shows which

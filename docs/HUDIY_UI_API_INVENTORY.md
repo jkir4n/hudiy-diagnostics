@@ -26,9 +26,9 @@ Evidence base (all read directly, nothing guessed):
 - Third-party repos (GitHub API + raw fetch, 2026-09-10): EpicNori/Hudiy-Marketplace,
   noobychris/audi-can-rpi
 
-NOT inspected (limitation): the dev workstation <projects-folder>\Hudiy Diagnostics docs
+NOT inspected (limitation): the dev workstation's copy of this repo's docs
 (V1_SPEC.md, ARCHITECTURE_NOTES.md) and the Race Dash repo's
-mock_hudiy_server.py — no SSH/SMB path to the dev workstation from here. OBD-transport
+mock_hudiy_server.py — no reachable path to that machine from here. OBD-transport
 constraint taken as given per task scope. Hudiy itself is closed-source, so
 server-side internals below are marked [inferred] where they rest only on
 client/log evidence.

@@ -1,16 +1,16 @@
 # AGENTS.md — Hudiy Diagnostics
 
-**Last updated:** 2026-09-11 (Phase 2b: app live on car; wheel/knob shim)
+**Last updated:** 2026-09-14 (publish-readiness pass; app live on car)
 
 ## 1. What this project is
-A Hudiy **menu-launched** car diagnostics app. Phase 1 = research + captured data only. Backend and frontend are deliberately NOT started (owner's explicit instruction: gather data first, build later).
+A Hudiy **menu-launched** car diagnostics app. Backend, frontend and the wheel/knob shim are built and live on the reference head unit. Publication-ready (privacy gate executed 2026-09-14); NOT published.
 
 Non-negotiable requirements (owner's verbatim constraints):
 1. **No autolaunch.** Opened ONLY via the Hudiy settings/applications menu.
 2. **Universal.** "It should be able to deployed to any hudiy instance, so it should be universal." No system-specific code baked in — vehicle capabilities are DISCOVERED at runtime (PID bitmap, OBDMID map, VIN via Mode 09), never hardcoded.
 3. Read all OBD, check for errors, run diagnostics.
 
-## 2. Environment facts (verified on the reference head unit 2026-09-09)
+## 2. Environment facts (verified on the reference head unit, 2026-09-09)
 - Hudiy TCP API `127.0.0.1:44405`, protobuf messages in `common/Api_pb2.py`.
 - OBD chain: Hudiy ⇄ ELM327 Bluetooth (RFCOMM) ⇄ ISO 15765-4 CAN 11-bit (VW).
 - Race Dash (deployed sibling): charts.py :44411 (SSE API), toggle daemon :44413, user systemd units `hudiy-obd-charts`, `race-dash-screensaver`.

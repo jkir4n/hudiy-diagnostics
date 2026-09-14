@@ -16,11 +16,10 @@ WHY THIS EXISTS
     bridge callbacks use.
 
 WHAT IT READS
-    /dev/input/event1 -- the rotary wheel arrives as a USB mouse: EV_REL
-    REL_WHEEL (+1 down / -1 up) ticks, REL_X for horizontal. The knob center
-    press shows up on the same or sibling event devices as EV_KEY -- detected
-    at runtime; any EV_KEY press while the overlay is visible is forwarded as
-    "activate", long-press (>=400 ms) is not needed for v1.
+    /dev/input/event4 by default -- the head-unit MCU presents the knob as a
+    plain input device: EV_KEY press/release per detent (see the capture map
+    below). Override the path with DIAG_SHIM_DEVICE; when the device is absent
+    the shim waits quietly, so a knobless install never restart-loops.
 
 VISIBILITY
     Reads the diag control lane (127.0.0.1:44414/status). While the overlay is
@@ -28,9 +27,11 @@ VISIBILITY
     race-dash overlay.
 
 RUNTIME
-    Runs as the car user with a systemd --user unit (hudiy-diag-keys). Reading
-    /dev/input needs the `input` group: `sudo usermod -aG input $USER` (done at
-    install time by tools/install_key_shim.sh) or a udev rule.
+    Runs as the user with a systemd --user unit (hudiy-diag-keys). Reading
+    /dev/input needs the `input` group: `sudo usermod -aG input $USER` (the
+    installer prints this reminder) or a udev rule. Device and endpoints are
+    env-overridable: DIAG_SHIM_DEVICE, DIAG_SHIM_LANE_STATUS (or
+    DIAG_HTTP_PORT), DIAG_SHIM_CDP.
 """
 from __future__ import annotations
 
@@ -55,11 +56,13 @@ REL_WHEEL, REL_WHEEL_HWHEEL, REL_X = 0x08, 0x0A, 0x00
 #   code 3 (KEY_2)    - one detent RIGHT (CW  / next)
 #   code 28 (KEY_ENTER) - knob center press (activate)
 #   code 1  (KEY_ESC) - treated as back / previous fallback
-# (Matches the owner's model: turns = scroll left/right, click = ENTER.)
-EVENT_FILE = "/dev/input/event4"
+# (Turns = scroll left/right; click = ENTER.)
+EVENT_FILE = os.environ.get("DIAG_SHIM_DEVICE", "/dev/input/event4")
 KEY_LEFT_CODE, KEY_RIGHT_CODE, KEY_ENTER_CODE, KEY_BACK_CODE = 2, 3, 28, 1
-LANE_STATUS = "http://127.0.0.1:44414/status"
-CDP_URL = "http://127.0.0.1:9222/json"
+_LANE_PORT = os.environ.get("DIAG_HTTP_PORT", "44414")
+LANE_STATUS = os.environ.get("DIAG_SHIM_LANE_STATUS",
+                             f"http://127.0.0.1:{_LANE_PORT}/status")
+CDP_URL = os.environ.get("DIAG_SHIM_CDP", "http://127.0.0.1:9222/json")
 FRAME_FMT = "llHHI"
 FRAME_SIZE = struct.calcsize(FRAME_FMT)
 POLL_INTERVAL = 2.0          # visibility check cadence while inert
@@ -182,9 +185,27 @@ def show_recovery(ws_url_holder: dict) -> None:
         ws_url_holder["url"] = None  # target id changes after reload
 
 
+def open_event_device() -> int:
+    """Open the knob device, waiting quietly if it is not present yet.
+
+    Portability: on an install with no head-unit knob the device never
+    appears; the shim must stay a quiet no-op, not exit into a restart loop.
+    """
+    logged = False
+    while True:
+        try:
+            return os.open(EVENT_FILE, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError as exc:
+            if not logged:
+                log(f"input device {EVENT_FILE!r} not available ({exc}); "
+                    "waiting - set DIAG_SHIM_DEVICE to override")
+                logged = True
+            time.sleep(10)
+
+
 def scan_events(ws_url_holder: dict) -> None:
     """Read EV_KEY wheel detents + knob press from the head unit MCU."""
-    fd = os.open(EVENT_FILE, os.O_RDONLY | os.O_NONBLOCK)
+    fd = open_event_device()
     was_visible = False
     try:
         while True:

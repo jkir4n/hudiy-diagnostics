@@ -2,7 +2,7 @@
 
 Car diagnostics app for Hudiy — reads OBD data, checks for errors, runs vehicle diagnostics. Menu-launched (no autolaunch). Universal: deployable to any Hudiy instance, no vehicle- or machine-specific code.
 
-**Status: Phase 1 — research & data gathering (backend/frontend deliberately deferred).**
+**Status: live on the reference car (Phases 1–2c). Publication-ready; not yet published — see `docs/GITHUB_PUBLISH_PRIVACY_GATE.md`.**
 
 ## Install (one line, no root)
 
@@ -29,7 +29,7 @@ fixtures/
 ```
 
 ## The vehicle (this capture only — the APP must discover these at runtime)
-- VIN `WVWZZZ1KZAW555555`, ECM "ECM-EngineControl", diesel monitor map.
+- VIN `WVWZZZ1KZAW555555` (synthetic placeholder — the capture was anonymised), ECM "ECM-EngineControl", diesel monitor map.
 - Supported PIDs & OBDMIDs: see `docs/DECODED_FIXTURES.md`.
 
 ## Known hard constraints (from live probing)
@@ -38,14 +38,13 @@ fixtures/
 3. `NO DATA` arrives as empty string through Hudiy.
 4. Response frames concatenate as `0:…1:…2:…` with variable CF lengths — parse sequentially, never regex.
 
-## Next phases (pending)
-- Phase 2a: settle OBD client-slot design (arbiter vs proxy vs exclusivity) — options documented.
-- Phase 2b: backend + frontend (split to specialist cards; backend first).
+## Status & docs
+Phases 1–2c complete: the app is live on the reference head unit (backend + frontend + wheel/knob shim; deploy via `install-bootstrap.sh`). History: `CHANGELOG.md`. Publication readiness: `docs/GITHUB_PUBLISH_PRIVACY_GATE.md`.
 
 
 ---
 
 **Update 2026-09-10:** Phase 1 complete. All fixtures captured (including negative fixtures: freeze-frame and Mode 0A not supported on the reference car — handled by runtime discovery). Definitive transport constraint + v1 build spec in `docs/V1_SPEC.md`; feature survey in `docs/FEATURE_SURVEY_FINDINGS.md`. Phase 2: backend specialist first, then frontend.
 
-**Update 2026-09-11:** The app is live on the car. Wheel/knob navigation shipped: this Hudiy build routes no physical input to third-party overlay webviews, so `tools/keyboard_shim.py` (unit `hudiy-diag-keys`, installed by `backend/deploy/install.sh`) reads the Elecrow knob at the input layer and drives the page's `window.__diagKeyNav()` via the QtWebEngine DevTools socket — inert unless the overlay is visible. Overlay lifecycle: Hudiy re-shows the singleton webview on relaunch, so the page undoes its exit teardown on attach (anything else = blank relaunch or white-flash; details in `tools/README.md`). Privacy note before any public push: see `docs/GITHUB_PUBLISH_PRIVACY_GATE.md`.
+**Update 2026-09-11:** The app is live on the car. Wheel/knob navigation shipped: this Hudiy build routes no physical input to third-party overlay webviews, so `tools/keyboard_shim.py` (unit `hudiy-diag-keys`, installed by `backend/deploy/install.sh`) reads the Elecrow knob at the input layer and drives the page's `window.__diagKeyNav()` via the QtWebEngine DevTools socket — inert unless the overlay is visible. Overlay lifecycle: Hudiy re-shows the singleton webview on relaunch, so the page undoes its exit teardown on attach (anything else = blank relaunch or white-flash; details in `tools/README.md`). Privacy: gate **executed 2026-09-14** (synthetic VIN/CAL-ID/CVN in fixtures + docs; topology genericised; shim made device-configurable). Repo is publication-ready; not yet published.
 

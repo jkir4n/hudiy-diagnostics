@@ -327,7 +327,7 @@ def _ascii_records(payload: bytes) -> dict:
     content = body[1:] if nodi is not None else body
     stripped = framing.strip_tail_padding(content)
     # Interior pad bytes (NUL, 0xAA, 0xFF) appear mid-string when the ECU pads
-    # a frame boundary (e.g. 090A "ECM\x00-EngineControl" on the Polo TDI).
+    # a frame boundary (e.g. 090A "ECM\x00-EngineControl" on the reference ECU).
     # Ground truth fixtures (DECODED_FIXTURES.md) treat these as absent, not
     # as '.' placeholders - drop them from the printable text only.
     cleaned = bytes(

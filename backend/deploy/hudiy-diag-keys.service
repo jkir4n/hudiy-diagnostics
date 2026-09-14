@@ -3,7 +3,7 @@ Description=Hudiy Diagnostics wheel-key shim (wheel -> diag page nav)
 After=hudiy-diagnostics.service
 
 [Service]
-# %h is the user's home - universal on any install; no ~ baked in.
+# %h is the user's home - universal on any install; no user-specific home baked in.
 ExecStart=/usr/bin/python3 %h/.local/share/hudiy-diagnostics/tools/keyboard_shim.py
 Restart=on-failure
 RestartSec=3

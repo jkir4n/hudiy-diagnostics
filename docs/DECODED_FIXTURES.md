@@ -5,6 +5,10 @@ Transport evidence: `probe_meta.link = "ELM327 BT RFCOMM, ISO 15765-4 CAN 11-bit
 
 All values below are decoded from `fixtures/round1_full_capture.json` raw strings.
 
+> **Publication note (2026-09-14):** VIN / CAL-ID / CVN values below are
+> **synthetic placeholders** — the reference vehicle's real identifiers were
+> scrubbed for publication. Frame layout, lengths and decoding are unchanged.
+
 ## Identity
 - **VIN (Mode 09 0x02)**: `WVWZZZ1KZAW555555`
   - raw: `0:490201575657 1:5A5A5A314B5A41 2:57353535353535`

@@ -85,8 +85,9 @@ Run procedure (validated twice on-car):
 ## Marginal artifacts
 
 - `/tmp`-sourced `diag_probe3.json` / `diag_probe4.json` (wedge-era empty
-  results) are NOT archived here — zero informational value; the negative
-  evidence lives in `fixtures/round2_elm_wedge_aftermath.json`.
+  results) are kept under `fixtures/probes/` for completeness only (wedge-era empty
+  results, zero informational value); the load-bearing negative evidence lives
+  in `fixtures/round2_elm_wedge_aftermath.json`.
 
 ## keyboard_shim.py — wheel/knob → diagnostics page (part of the APP)
 
@@ -111,6 +112,7 @@ Device map (captured per-direction 11 Sep; earlier 1/2/3 guess was WRONG):
   every edge; add debounce only if it ever mis-fires in real use.
 - `/dev/input/event1` is a USB mouse — NOT the knob (first shim version's
   mistake, three failed user tests before the per-direction re-capture).
+- Portability: `DIAG_SHIM_DEVICE` overrides the knob device (default `/dev/input/event4`); if the device is absent the shim waits quietly instead of restart-looping. `DIAG_SHIM_LANE_STATUS` / `DIAG_HTTP_PORT` and `DIAG_SHIM_CDP` override the endpoints.
 
 Deployment extras the installer now handles: unit install + `input` group
 check (`sudo usermod -aG input $USER` on the reference Pi; done by hand there).

@@ -20,3 +20,6 @@ backend/state/
 
 # Reports generated locally
 backend/reports/
+
+# Local-only privacy re-audit patterns (never commit)
+tools/privacy-patterns.local
