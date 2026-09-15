@@ -2,6 +2,15 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-16 — Input: ghost-navigation fix (hidden-time knob events were replayed on open)
+
+### Fixed
+- `tools/keyboard_shim.py`: false input on open (user-reported live). While the overlay was hidden the shim never read the knob device, so Hudiy-menu navigation (scrolls + the click that opens the app) accumulated in the kernel queue and was replayed into the freshly-shown page: the selection cycled, a stray activate landed on Scan or the exit path, and a later open could look normal (timing-dependent). The shim now drains (discards) the device queue the entire time the overlay is hidden, plus a short (~0.35 s) settle window after each show; only events made while the page is up are forwarded. Exit is covered by the same rule (hidden = discard).
+- `backend/tests/test_keyboard_shim.py`: drain tests (pipe-driven; press-only counting, empty-queue no-op).
+
+### Verified
+- Reference unit, live: 40+ menu steps discarded between shows (0 leaked), 2 in-flight events caught at the show-flip, in-page navigation delivered 1:1 afterwards, post-exit menu activity discarded.
+
 ## 2026-09-16 — Installer bench trial: auto-reboot, ssh-safety, overlay-config hardening
 
 ### Added

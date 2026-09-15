@@ -104,7 +104,11 @@ third-party overlay webviews — proven by CDP trials on 11 Sep (zero DOM
 keydowns and zero bridge callbacks while the overlay was visible;
 inputFocus/activated stay false). The shim reads the knob at the kernel input
 layer and fires the page's own nav hook via the QtWebEngine DevTools socket
-(127.0.0.1:9222), gated on overlay visibility, inert when hidden.
+(127.0.0.1:9222), gated on overlay visibility: while hidden it DISCARDS the
+knob's events (the same knob drives Hudiy's menu - hidden-time events replayed
+into the page on the next show = ghost navigation; fixed live 16 Sep 2026) and
+settles ~0.35 s after each show before forwarding. Only visible-time input is
+ever forwarded; exit is covered by the same hidden = discard rule.
 
 Device map (keys `1`/`2` are Hudiy's scroll-left/right bindings; captured per-direction 11 Sep):
 - `/dev/input/event4` — gen4-ESP32 MCU (Elecrow knob on the head unit),
@@ -122,7 +126,9 @@ Device map (keys `1`/`2` are Hudiy's scroll-left/right bindings; captured per-di
 
 Deployment extras the installer now handles: unit install + `input` group
 check (`sudo usermod -aG input $USER` on the reference Pi; done by hand there).
-Debug: set `SHIM_DEBUG_LOG=/tmp/diag_shim_dbg.log` — one line per dispatch.
+Debug: set `SHIM_DEBUG_LOG=/tmp/diag_shim_dbg.log` — one line per forwarded
+step, plus discard summaries (`dropped N ... step(s)`) for hidden/show-flip
+windows.
 
 Hudiy visibility-edge behavior (found live 11–12 Sep): Hudiy RE-SHOWS the
 singleton overlay webview on menu relaunch instead of recreating it, so a
