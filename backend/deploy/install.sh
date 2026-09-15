@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Hudiy Diagnostics - idempotent installer for ANY Hudiy instance.
 #
-#   ./install.sh              install (or update) + start the diagnostics lane
+#   ./install.sh              install (or update) + start, then reboot to apply
+#   ./install.sh --no-reboot  install, but skip the closing reboot
 #   ./install.sh --dry-run    print what would happen, change nothing
 #   ./install.sh --uninstall  stop + remove the unit (keeps copied files)
 #
-# No root, no machine-specific values: everything comes from $HOME and env
-# overrides. Safe to re-run after every `git pull`.
+# No root required; no machine-specific values: everything comes from $HOME
+# and env overrides. Safe to re-run after every `git pull`.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -19,12 +20,15 @@ HOST="${DIAG_HTTP_HOST:-127.0.0.1}"
 SERVICE="hudiy-diagnostics"
 DRY_RUN=0
 UNINSTALL=0
+REBOOT=1
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --uninstall) UNINSTALL=1 ;;
-    -h|--help) sed -n '2,9p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --no-reboot) REBOOT=0 ;;
+    --reboot) REBOOT=1 ;;
+    -h|--help) sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -34,13 +38,41 @@ run() {
   if [ "$DRY_RUN" = "1" ]; then printf '    [dry-run] %s\n' "$*"; else "$@"; fi
 }
 
+# Hudiy (and friends) read their config at START - reboot at the end of a
+# successful install so every change is picked up for sure. Fired detached
+# (setsid) with a short delay so it still lands when the script runs over
+# ssh and the session would otherwise die first. --no-reboot skips it.
+apply_reboot() {
+  if [ "$REBOOT" != "1" ]; then
+    say "reboot skipped (--no-reboot); restart Hudiy once if the menu changed."
+    return 0
+  fi
+  if ! sudo -n true 2>/dev/null; then
+    say "no passwordless sudo - reboot by hand to apply everything:"
+    echo "      sudo systemctl reboot"
+    return 0
+  fi
+  say "rebooting in 3s to apply all changes (the ssh session will drop - expected)"
+  if command -v setsid >/dev/null; then
+    setsid bash -c 'sleep 3; sudo -n systemctl reboot' </dev/null >/dev/null 2>&1 &
+  else
+    nohup bash -c 'sleep 3; sudo -n systemctl reboot' </dev/null >/dev/null 2>&1 &
+  fi
+}
+
 need_systemctl_user() {
-  if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR:-/nonexistent}" ]; then
-    say "no user session bus (XDG_RUNTIME_DIR unset)."
+  command -v systemctl >/dev/null || { echo "systemctl not found" >&2; exit 1; }
+  # Non-interactive shells (ssh, cron) do not export XDG_RUNTIME_DIR, yet the
+  # user bus is alive. Recover the path, then PROBE the bus - bailing on the
+  # env var alone false-negatived every ssh-run install.
+  if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  fi
+  if ! systemctl --user status >/dev/null 2>&1; then
+    say "cannot reach the user systemd bus."
     echo "    Fix: loginctl enable-linger $USER   # then re-run this script" >&2
     exit 1
   fi
-  command -v systemctl >/dev/null || { echo "systemctl not found" >&2; exit 1; }
 }
 
 case "$PORT" in
@@ -137,7 +169,11 @@ if [ -d "$HUDIY_CONFIG_DIR" ]; then
   else
     run python3 "$INSTALL_DIR/frontend/hudiy/merge_config.py" "$HUDIY_CONFIG_DIR" --port "$PORT"
   fi
-  echo "    restart Hudiy for the new menu entry (it reads its config at start)"
+  if [ "$REBOOT" = "1" ]; then
+    echo "    menu entry goes live after the closing reboot (Hudiy reads config at start)"
+  else
+    echo "    restart Hudiy for the new menu entry (it reads its config at start)"
+  fi
 else
   echo "    no Hudiy config layout at $HUDIY_CONFIG_DIR - skipped"
   echo "    (run: python3 $INSTALL_DIR/frontend/hudiy/merge_config.py <config dir> --port $PORT)"
@@ -146,6 +182,7 @@ fi
 say "health check: http://$HOST:$PORT/health"
 if [ "$DRY_RUN" = "1" ]; then
   echo "    [dry-run] curl -fsS http://$HOST:$PORT/health"
+  if [ "$REBOOT" = "1" ]; then echo "    [dry-run] would reboot at the end (pass --no-reboot to skip)"; fi
   exit 0
 fi
 for _ in $(seq 1 20); do
@@ -155,6 +192,7 @@ for _ in $(seq 1 20); do
     echo
     echo "    unit:    systemctl --user status $SERVICE"
     echo "    logs:    systemctl --user status $SERVICE   (no journald on Hudiy)"
+    apply_reboot
     exit 0
   fi
   sleep 0.5
