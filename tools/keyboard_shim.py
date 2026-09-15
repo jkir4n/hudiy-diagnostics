@@ -38,7 +38,10 @@ DEVICE DISCOVERY
 
 VISIBILITY
     Reads the diag control lane (127.0.0.1:44414/status). While the overlay is
-    hidden the shim is inert.
+    hidden the shim is inert AND drains the device queue (Hudiy menu
+    navigation must never replay into the page on the next show); after a
+    show it settles briefly before forwarding so the opening click cannot
+    double-fire.
 
 RUNTIME
     Runs as the user with a systemd --user unit (hudiy-diag-keys). Reading
@@ -85,7 +88,8 @@ LANE_STATUS = os.environ.get("DIAG_SHIM_LANE_STATUS",
 CDP_URL = os.environ.get("DIAG_SHIM_CDP", "http://127.0.0.1:9222/json")
 FRAME_FMT = "llHHI"
 FRAME_SIZE = struct.calcsize(FRAME_FMT)
-POLL_INTERVAL = 2.0          # visibility check cadence while inert
+POLL_INTERVAL = 1.0          # visibility check cadence while the overlay is hidden
+SHOW_SETTLE_S = 0.35         # input-unlock delay after the overlay shows
 RESCAN_S = 10.0              # wait between device-discovery attempts
 
 
@@ -340,17 +344,51 @@ def open_event_device() -> int:
         time.sleep(RESCAN_S)
 
 
+def _drain_ready(fd: int) -> int:
+    """Read and DISCARD everything already queued on the device.
+
+    The knob also drives Hudiy's own menu: while the overlay is hidden this
+    fd accumulates those menu events (scrolls AND the select click that opens
+    the app). Reading them at the next show replayed the whole menu onto the
+    page (focus cycled, scans self-started, the page exited - caught live
+    16 Sep 2026). Hidden-time events must be dropped, never forwarded.
+    """
+    dropped = 0
+    while True:
+        r, _, _ = select.select([fd], [], [], 0)
+        if not r:
+            return dropped
+        data = os.read(fd, FRAME_SIZE)
+        if len(data) < FRAME_SIZE:
+            continue
+        _, _, ev_type, ev_code, ev_val = struct.unpack(FRAME_FMT, data)
+        if classify(ev_type, ev_code, ev_val):
+            dropped += 1
+
+
 def _scan_fd(fd: int, ws_url_holder: dict) -> None:
     """Read events from one open device until it disappears (OSError)."""
     was_visible = False
     while True:
         if not overview_visible():
             was_visible = False
+            # Keep the kernel queue drained while hidden: nothing may
+            # accumulate between shows (dropped ONLY here, never at forward).
+            n = _drain_ready(fd)
+            if n:
+                dbg(f"dropped {n} hidden-time step(s)")
             time.sleep(POLL_INTERVAL)
             continue
         if not was_visible:
             was_visible = True
             show_recovery(ws_url_holder)
+            # Settle window: the ALWAYS flip can trail the user's last menu
+            # events by a few hundred ms - drop those instead of replaying.
+            dropped = _drain_ready(fd)
+            time.sleep(SHOW_SETTLE_S)
+            dropped += _drain_ready(fd)
+            if dropped:
+                dbg(f"dropped {dropped} step(s) at show-flip")
         r, _, _ = select.select([fd], [], [], 0.25)
         if not r:
             continue

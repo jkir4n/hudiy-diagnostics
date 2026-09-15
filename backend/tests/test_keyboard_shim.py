@@ -86,5 +86,41 @@ class DeviceScoreTests(unittest.TestCase):
         self.assertEqual(after - before, 100)
 
 
+class DrainTests(unittest.TestCase):
+    """Hidden-time knob events must be discarded, never replayed.
+
+    Live regression (16 Sep 2026): the fd accumulated Hudiy-menu navigation
+    while the overlay was hidden and replayed it into the page on the next
+    show (focus cycled, scans self-started, the page exited). _drain_ready is
+    the discard path; these tests pin its behavior using a plain pipe.
+    """
+
+    @staticmethod
+    def _frame(ev_type, code, val):
+        import struct
+        return struct.pack(shim.FRAME_FMT, 0, 0, ev_type, code, val)
+
+    def test_drain_discards_queued_nav_presses(self):
+        fd_r, fd_w = os.pipe()
+        try:
+            os.write(fd_w, self._frame(EV_KEY, 2, 1))    # KEY_1 press
+            os.write(fd_w, self._frame(EV_KEY, 2, 0))    # release - not a step
+            os.write(fd_w, self._frame(EV_KEY, 3, 1))    # KEY_2 press
+            os.write(fd_w, self._frame(EV_KEY, 28, 1))   # ENTER press
+            self.assertEqual(shim._drain_ready(fd_r), 3)
+            self.assertEqual(shim._drain_ready(fd_r), 0)  # queue now empty
+        finally:
+            os.close(fd_r)
+            os.close(fd_w)
+
+    def test_drain_on_empty_queue_is_a_noop(self):
+        fd_r, fd_w = os.pipe()
+        try:
+            self.assertEqual(shim._drain_ready(fd_r), 0)
+        finally:
+            os.close(fd_r)
+            os.close(fd_w)
+
+
 if __name__ == "__main__":
     unittest.main()
