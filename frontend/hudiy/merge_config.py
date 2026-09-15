@@ -10,6 +10,8 @@
   to ``<name>.bak-<YYYYmmdd-HHMMSS>`` before the first write of a run, and the
   fragments are INSERTED INTO the existing arrays. Nothing else is touched and
   ``applications.json`` is never modified (this is an overlay, not an app URL).
+  Writes are atomic (temp file + rename) and reads tolerate a UTF-8 BOM, so a
+  crash or odd encoding can never leave a half-written config behind.
 * Idempotent: re-running after a port change updates the overlay's url, and
   re-running otherwise reports "already present" and writes nothing.
 
@@ -44,9 +46,10 @@ SYNCED_OVERLAY_KEYS = ("url", "action", "visibleOnActions", "controlAudioFocus")
 
 
 def load_json(path, default):
+    # utf-8-sig: tolerate a BOM (some editors save JSON that way on Windows).
     if not os.path.isfile(path):
         return default, False
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, "r", encoding="utf-8-sig") as handle:
         text = handle.read().strip()
     if not text:
         return default, False
@@ -62,9 +65,13 @@ def backup(path, stamp):
 
 
 def dump(path, payload):
-    with open(path, "w", encoding="utf-8") as handle:
+    # Write-then-rename: a crash or power loss mid-write can never leave a
+    # half-written config; the .bak-* taken by backup() is the fallback.
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=4)
         handle.write("\n")
+    os.replace(tmp, path)
 
 
 def merge_overlays(config_dir, url, dry_run, stamp):

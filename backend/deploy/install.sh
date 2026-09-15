@@ -91,6 +91,8 @@ if [ "$UNINSTALL" = "1" ]; then
   run rm -f "$UNIT_DIR/hudiy-diag-keys.service"
   run systemctl --user daemon-reload
   say "removed. Copied files left in $INSTALL_DIR (delete by hand if wanted)."
+  echo "    Hudiy menu/overlay entries are left untouched - remove them from"
+  echo "    ~/.hudiy/share/config if wanted (they are inert without the unit)."
   exit 0
 fi
 
@@ -116,14 +118,16 @@ fi
 say "installing user unit -> $UNIT_DIR/$UNIT_NAME"
 run cp -a "$REPO_DIR/backend/deploy/$UNIT_NAME" "$UNIT_DIR/$UNIT_NAME"
 
-# Wheel/key shim (optional, only where a head-unit knob exists). Reads
-# /dev/input BEFORE the shim can run, the user must be in the `input` group.
+# Wheel/key shim (runs everywhere: it auto-detects a knob and idles when none).
+# Reading /dev/input needs the `input` group; until the user is in it the shim
+# just re-scans, so enabling it here is harmless and makes fresh installs work.
 SHIM_UNIT="hudiy-diag-keys.service"
 say "installing wheel-key shim unit -> $UNIT_DIR/$SHIM_UNIT"
 run cp -a "$REPO_DIR/backend/deploy/$SHIM_UNIT" "$UNIT_DIR/$SHIM_UNIT"
 if [ "$DRY_RUN" = "0" ] && ! id -nG "$USER" 2>/dev/null | tr ' ' '\n' | grep -qx input; then
   echo "    NOTE: add your user to the 'input' group for the shim to read the knob:"
   echo "      sudo usermod -aG input $USER   # then log out+back in (or reboot)"
+  echo "    (the shim unit is already enabled; it starts working after the re-login)"
 fi
 
 if [ ! -f "$ENV_DIR/env" ]; then
@@ -153,7 +157,16 @@ fi
 need_systemctl_user
 say "reloading user systemd and starting $SERVICE"
 run systemctl --user daemon-reload
-run systemctl --user enable --now "$SERVICE"
+# enable + restart (restart also starts an inactive unit): re-running the
+# installer is an UPDATE, so the copied code must actually be what runs -
+# 'enable --now' alone would leave an already-running old process in place.
+run systemctl --user enable "$SERVICE"
+run systemctl --user restart "$SERVICE"
+# The shim is safe to run everywhere (see the note above); the `|| true` only
+# keeps a shim hiccup from failing an otherwise good install.
+say "starting the wheel-key shim ($SHIM_UNIT)"
+run systemctl --user enable "$SHIM_UNIT"
+run systemctl --user restart "$SHIM_UNIT" || true
 
 # Register the overlay and the menu entry with Hudiy - but only on a machine
 # that actually has a Hudiy config layout. The fragments under frontend/hudiy/
