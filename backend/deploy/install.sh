@@ -159,8 +159,9 @@ run systemctl --user enable --now "$SERVICE"
 # that actually has a Hudiy config layout. The fragments under frontend/hudiy/
 # are MERGED into the live config (never copied over it), the existing files are
 # backed up first, and Hudiy only reads them at start: see
-# frontend/hudiy/README.md, including the menu-action item that still needs a
-# bench trial.
+# frontend/hudiy/README.md. Bench-trialed 16 Sep 2026 on the reference unit:
+# the overlay's visibleOnActions must stay EMPTY - a non-empty list silently
+# suppresses the paint even though every API call in the chain succeeds.
 say "registering 'Diagnostics' with Hudiy (menu + overlay)"
 HUDIY_CONFIG_DIR="${DIAG_HUDIY_CONFIG_DIR:-$HOME/.hudiy/share/config}"
 if [ -d "$HUDIY_CONFIG_DIR" ]; then

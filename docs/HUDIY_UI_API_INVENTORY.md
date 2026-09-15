@@ -194,7 +194,10 @@ POST /client-log).
   EMPTY, so treat as plan-B needing a device trial, not the proven path.
 - Pages/overlays/dashboards/menu entries are ALL file config, none
   creatable over protobuf. visibleOnActions[] can auto-show an overlay on a
-  named action (empty in all examples seen).
+  named action (empty in all examples seen). CAUTION (bench, 16 Sep 2026):
+  a NON-EMPTY visibleOnActions on a custom overlay silently suppresses the
+  paint - dispatch, SetCustomOverlayVisibility and webview creation all
+  succeed/log, yet nothing shows; keep [] and drive visibility at runtime.
 
 ---
 

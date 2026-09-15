@@ -416,6 +416,12 @@ class HudiyRegistrationTests(unittest.TestCase):
         # (proven by the red-bench A/B test, 11 Sep). The custom action lives
         # only on the menu item; visibility is runtime-driven by the lane.
         self.assertEqual(entry["action"], "")
+        # visibleOnActions must stay EMPTY as well - bench-proven 16 Sep 2026:
+        # a non-empty list (["diag_show"]) made the entire chain *succeed*
+        # silently (dispatch logged, SetCustomOverlayVisibility accepted,
+        # webview created and loaded) yet the overlay NEVER painted; reverting
+        # to [] restored it. Runtime visibility is the only show path.
+        self.assertEqual(entry["visibleOnActions"], [])
         self.assertEqual((entry["width"], entry["height"]), (800, 480),
                          "the overlay is the head unit's screen size")
         self.assertTrue(entry["url"].endswith("/app/diag.html"))

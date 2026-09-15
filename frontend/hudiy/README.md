@@ -46,24 +46,21 @@ script `~/.hudiy/share/hudiy_run.sh` - and do not edit config under a running
 Hudiy: it rewrites its config from memory and loses the change. This is the same
 "kill, take a backup, restart" discipline used for the audio config.
 
-## Menu action and the open bench item
+## Menu action and overlay visibility (bench-RESOLVED, 16 Sep 2026)
 
-The menu entry dispatches the action `diag_show`, and the overlay entry lists it
-in `visibleOnActions`. Hudiy shows a custom overlay through its protobuf API
-(`SetCustomOverlayVisibility`, see the inventory doc): either it honours
-`visibleOnActions` for a custom overlay, or something on the machine has to
-register the action and toggle visibility when it is dispatched.
+The menu entry dispatches the action `diag_show`; the overlay is shown/hidden
+at runtime by the control lane (`SetCustomOverlayVisibility`), exactly like the
+working race-dash overlay.
 
-`visibleOnActions` with a non-empty list is documented but was not exercised in
-the examples we have, so this is a **bench-trial item**, not a proven path:
+**Keep the overlay entry's `visibleOnActions` list EMPTY.** Bench finding
+(16 Sep 2026, reference car): with `visibleOnActions: ["diag_show"]` the whole
+chain still *succeeds* - Hudiy dispatches, the lane logs the dispatch,
+`SetCustomOverlayVisibility(ALWAYS)` is accepted and logged, and the overlay's
+webview is created and fully loads - but nothing ever PAINTS. Reverting the
+list to `[]` (plus a Hudiy restart) restores the overlay immediately.
+Non-empty `visibleOnActions` on a custom overlay is a silent no-show; do not
+use it as a show mechanism.
 
-1. Restart Hudiy and open *Diagnostics* from the menu, in the Hudiy category.
-2. If the overlay does not appear, the fallback is a small daemon that registers
-   `diag_show` and sends `SetCustomOverlayVisibility(identifier="diag",
-   visibility=VISIBLE)` on dispatch. Nothing in the page changes for that - the
-   overlay is just a URL (`http://127.0.0.1:44414/app/diag.html`).
-
-While on the bench, note what the rotary knob reports for `SCROLL_LEFT` /
-`SCROLL_RIGHT`: the page wires both the next/previous-control callbacks and the
-left/right callbacks, so either mapping works, but only the trial can say which
-one the knob actually sends.
+Knob mapping (bench-captured): detents report 2=left/prev, 3=right/next,
+28=center/enter, 1=back; the page wires both callback families, so either
+mapping works.

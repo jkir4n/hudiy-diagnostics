@@ -72,6 +72,13 @@ def merge_overlays(config_dir, url, dry_run, stamp):
     with open(OVERLAY_FRAGMENT, "r", encoding="utf-8") as handle:
         entry = json.load(handle)
     entry["url"] = url
+    # Bench-proven 16 Sep 2026 (reference car): a NON-EMPTY visibleOnActions
+    # on a custom overlay silently suppresses the paint - every API call still
+    # succeeds (dispatch logged, SetCustomOverlayVisibility accepted, webview
+    # created and loaded) but nothing ever shows. Keep it empty: runtime
+    # SetCustomOverlayVisibility is the only show path. Pinning here also
+    # self-heals configs written before this fix.
+    entry["visibleOnActions"] = []
 
     doc, existed = load_json(path, dict(OVERLAYS_SKELETON))
     if not isinstance(doc, dict):
@@ -170,9 +177,10 @@ def main(argv=None):
 
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     print("    registering overlay 'diag' -> %s" % url)
-    merge_overlays(args.config_dir, url, args.dry_run, stamp)
-    merge_menu(args.config_dir, args.dry_run, stamp)
-    if not args.dry_run:
+    overlay_action = merge_overlays(args.config_dir, url, args.dry_run, stamp)
+    menu_action = merge_menu(args.config_dir, args.dry_run, stamp)
+    changed = [a for a in (overlay_action, menu_action) if a != "already present"]
+    if changed and not args.dry_run:
         print("    Hudiy must be restarted to read the new config (it loads "
               "these files once at start)")
     return 0
