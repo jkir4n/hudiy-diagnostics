@@ -13,12 +13,12 @@ or, once published:
 ```
 bash <(curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/master/install-bootstrap.sh)
 ```
-Installs user units + the wheel/knob shim, registers the Hudiy menu entry, health-checks `:44414`. The two things it cannot do for you are printed at the end (`input` group, Hudiy restart). Underneath it runs `backend/deploy/install.sh` (`--dry-run` supported).
+Installs user units + the wheel/knob shim, registers the Hudiy menu entry, health-checks `:44414`, then reboots so every change is picked up on the fresh boot (Hudiy reads its config at start). `--no-reboot` skips the reboot; `--dry-run` shows everything without touching anything. The one thing it cannot do for you is printed at the end (the `input` group for the knob shim). Underneath it runs `backend/deploy/install.sh`.
 
 ## Repository layout
 ```
 docs/
-  OBD2_DIAGNOSTICS_RESEARCH.md   # 576-line sourced protocol research (SAE J1979, ELM327, ISO 15765-4)
+  OBD2_DIAGNOSTICS_RESEARCH.md   # 576-line sourced protocol research (SAE J1979, ELM327, ISO 16565-4)
   ARCHITECTURE_NOTES.md          # environment facts, hard constraints, Phase-2 design options
   DECODED_FIXTURES.md            # round-1 live capture, decoded (VIN, PID map, Mode 06, DTCs)
 fixtures/
@@ -50,3 +50,4 @@ Phases 1–2c complete: the app is live on the reference head unit (backend + fr
 
 **Update 2026-09-14 (input):** the app takes input however the user has it - touch and mouse natively, knobs/keyboards/remotes through Hudiy's own bridge contract (Hudiy's scheme, not an app-specific one). A compatibility fallback (`tools/keyboard_shim.py`; auto-discovery, yields to native delivery, `DIAG_SHIM_DISABLE=1` to turn off) covers builds that do not deliver key events to overlay webviews. See `docs/HUDIY_KEYBOARD_CONTROL_SCHEME.md` section 4.
 
+**Update 2026-09-16:** installer finalized and bench-trialed end-to-end on the reference unit — ssh-safe systemd bus probe, services restarted on update (the copied code is what runs), knob shim started on fresh installs, atomic Hudiy config merge with backups, and an automatic closing reboot so everything is live on the next boot (`--no-reboot` optional). Bench finding baked in: a custom overlay's `visibleOnActions` must stay empty — a non-empty list silently suppresses the overlay paint.

@@ -2,6 +2,24 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-16 — Installer bench trial: auto-reboot, ssh-safety, overlay-config hardening
+
+### Added
+- `backend/deploy/install.sh`: auto-reboot at the end of a successful install (detached `setsid`, ~3 s delay — survives the ssh session drop) so every change is picked up on the fresh boot; Hudiy reads its menu/overlay config only at start. `--no-reboot` skips it; without passwordless sudo a manual command is printed instead; a failed health check never reboots.
+
+### Fixed
+- `need_systemctl_user()` false-negatived on every non-interactive ssh run (bailed on an unset `XDG_RUNTIME_DIR` before even trying) — it now recovers `/run/user/$(id -u)` and probes the user bus directly.
+- Re-running the installer is an update: services are now restarted after the file sync so the copied code is what runs (`enable --now` alone left an already-running old process in place until reboot).
+- The wheel-key shim unit is now enabled + started by the installer — fresh installs previously ended with the unit copied but never active. Safe everywhere: without a matching device, or before the `input` group re-login, it idles and re-scans instead of crashing.
+- `frontend/hudiy/merge_config.py`: config writes are now atomic (temp file + `os.replace`) and reads tolerate a UTF-8 BOM; a no-change run no longer prints the "restart Hudiy" hint. `--uninstall` now states explicitly that the Hudiy menu/overlay entries are left in place.
+
+### Bench findings (reference car, live)
+- **`visibleOnActions` must stay `[]` on a custom overlay.** With `["diag_show"]` every step *succeeds* — Hudiy dispatches, the lane logs the dispatch, `SetCustomOverlayVisibility(ALWAYS)` is accepted, the webview is created and fully loads — but the overlay never paints. Reverting to `[]` + a Hudiy restart restores it immediately. `merge_config.py` pins `[]` (self-healing configs written by the earlier version), the fragment + a new test assert the rule, and `docs/HUDIY_UI_API_INVENTORY.md` carries the caution.
+- Full rehearsal on the live tuned install: default run → auto-reboot → back in ~50 s → all green (services active, menu entries, overlay opens, reboot-button re-arms); `--no-reboot` run → clean idempotent no-op. Backend test suite green.
+
+### Docs
+- `frontend/hudiy/README.md`: bench section rewritten as resolved. `install-bootstrap.sh`: passes flags through (e.g. `--no-reboot`) and notes the closing reboot covers the Hudiy restart. Root `README.md` updated.
+
 ## 2026-09-14 — Git history purge (pre-publication privacy pass)
 
 ### Changed

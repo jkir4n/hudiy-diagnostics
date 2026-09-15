@@ -1,9 +1,9 @@
 # AGENTS.md — Hudiy Diagnostics
 
-**Last updated:** 2026-09-14 (publish-readiness pass; app live on car)
+**Last updated:** 2026-09-16 (installer bench-trialed end-to-end on the reference unit; app live on car)
 
 ## 1. What this project is
-A Hudiy **menu-launched** car diagnostics app. Backend, frontend and the wheel/knob shim are built and live on the reference head unit. Publication-ready (privacy gate executed 2026-09-14); NOT published.
+A Hudiy **menu-launched** car diagnostics app. Backend, frontend and the wheel/knob shim are built and live on the reference head unit. Publication-ready (privacy gate executed 2026-09-14); NOT published. Installer bench-trialed 2026-09-16 on the reference unit: ssh-safe, auto-reboot at the end, atomic config merge with backups.
 
 Non-negotiable requirements (owner's verbatim constraints):
 1. **No autolaunch.** Opened ONLY via the Hudiy settings/applications menu.
@@ -24,6 +24,7 @@ Non-negotiable requirements (owner's verbatim constraints):
 3. **`NO DATA` arrives as empty string** through Hudiy — treat empty as a valid negative answer, not an error.
 4. **Multi-frame parsing.** Response frames concatenate `0:…1:…2:…` with variable hex lengths. Parse sequentially (frame-count prefix + slice). NEVER regex — `7E8\d+:` patterns swallow data digits (caused an infinite loop + gateway OOM once).
 5. **Loop discipline in agent tooling:** no unbounded while-loops around `str.find()` in tool cells (find() returns -1 forever on miss → memory runaway).
+6. **Overlay config (bench 16 Sep 2026).** A custom overlay's `visibleOnActions` must stay `[]` — a non-empty list (e.g. `["diag_show"]`) lets the whole API chain succeed silently (dispatch logged, visibility set, webview created+loaded) but the overlay NEVER paints. Same family as the `action`-field rule (`action` must stay `""`). Runtime `SetCustomOverlayVisibility` is the only show path; `merge_config.py` pins and self-heals this.
 
 ## 4. Phase plan
 - **Phase 1 (DONE 10 Sep):** protocol research + ALL fixtures (positive AND negative) + feature survey + `docs/V1_SPEC.md` (build-ready).
@@ -40,7 +41,7 @@ Non-negotiable requirements (owner's verbatim constraints):
 - Never probe OBD while assuming charts.py state — check `:44411/health` first (`hudiy_connected`, `last_obd_age_s`).
 
 ## 6. Wheel/knob input (11 Sep, live-proven)
-- This Hudiy build routes NO physical input to third-party overlay webviews (CDP-proven). The shim `tools/keyboard_shim.py` (unit `hudiy-diag-keys`) reads the head-unit knob (auto-discovered; reference hardware: Elecrow/gen4-ESP32 at /dev/input/event4) and drives `window.__diagKeyNav()` via CDP 127.0.0.1:9222. Installer deploys the unit + checks the `input` group.
+- This Hudiy build routes NO physical input to third-party overlay webviews (CDP-proven). The shim `tools/keyboard_shim.py` (unit `hudiy-diag-keys`) reads the head-unit knob (auto-discovered; reference hardware: Elecrow/gen4-ESP32 at /dev/input/event4) and drives `window.__diagKeyNav()` via CDP 127.0.0.1:9222. Installer deploys, enables and starts the unit (it idles without a knob) + checks the `input` group.
 - True detent map (captured per-direction): 2=left/prev, 3=right/next, 28=center/enter, 1=back. The knob chatters (one turn can emit 5-6 detents).
 - Hudiy RE-SHOWS the singleton overlay webview on relaunch (never recreates); Exit teardown persists as blank unless the page clears it on `onAttached`. Reload-on-visible-edge = white-screen bug; only reload on the exited state.
 - The knob's routing of physical events does NOT change the input-parity rule: touch + bridge keys + gestures still all work in-page.
