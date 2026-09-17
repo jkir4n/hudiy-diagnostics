@@ -26,6 +26,7 @@ Endpoints (``/diag/<name>`` is accepted as an alias of every one of them, and
 ``GET /scan``              full scan -> structured JSON report
 ``GET /scan?sections=``    the same, restricted to named phases
 ``GET /report?format=``    text (default), csv or json rendering of the report
+``GET /capability``         compatibility sheet (``?format=json|text``)
 ``GET /dtc?code=&maker=``  DTC text lookup (generic + maker-specific)
 ``GET /vin?vin=&online=``  offline VIN decode, optional bounded online enrich
 ``POST /ui/hide``          hide our own overlay (the page's Exit path)
@@ -75,6 +76,7 @@ _STATIC_TYPES = {
 }
 
 from backend.diag import __version__ as diag_version  # noqa: E402
+from backend.diag import capability as capability_mod  # noqa: E402
 from backend.diag import config as config_mod  # noqa: E402
 from backend.diag import dtc as dtc_mod  # noqa: E402
 from backend.diag import fixtures as fixtures_mod  # noqa: E402
@@ -478,6 +480,52 @@ class DiagService:
             content_type += "; charset=utf-8"
         return Response(200, body, content_type)
 
+    def capability(self, fmt: str = "json") -> Response:
+        """The compatibility sheet: JSON by default, plain text on request.
+
+        Built from the last finished report without touching the car; a scan
+        runs first only when none has happened yet. An unreachable car degrades
+        to the usual offline/unavailable JSON (status 200), never a 500.
+        """
+        self._ensure()
+        key = str(fmt or "json").strip().lower().lstrip(".")
+        if key in ("text", "txt"):
+            key = "text"
+        elif key != "json":
+            raise BadRequest("unknown capability format %r (allowed: json, text)"
+                             % (fmt,))
+        if self._error:
+            return json_response(self._degraded(
+                STATUS_UNAVAILABLE, self._error, None), 200)
+        obd = self.obd_state()
+        if obd["state"] in _BLOCKING_STATES:
+            return json_response(self._degraded(
+                STATUS_OFFLINE,
+                obd.get("reason") or "the OBD link is not answering",
+                None, obd=obd), 200)
+        if self.engine is None:
+            return json_response(self._degraded(
+                STATUS_UNAVAILABLE, self._error or "no scan engine", None,
+                obd=obd), 200)
+        if getattr(self.engine, "report", None) is None:
+            payload = self.scan()
+            if payload.get("report") is None:
+                return json_response(payload, 200)
+        report = getattr(self.engine, "report", None)
+        if report is None:  # pragma: no cover - scan() above either fills or degrades
+            return json_response(self._degraded(
+                STATUS_UNAVAILABLE, self._error or "no report available", None,
+                obd=obd), 200)
+        mode = self.cfg.normalized_mode()
+        sheet = capability_mod.build_capability(
+            report, app_version=diag_version,
+            data_source="replay" if mode == config_mod.MODE_REPLAY else "live",
+            lane_mode=getattr(self.engine, "resolved_mode", None) or mode)
+        if key == "text":
+            return Response(200, capability_mod.render_text(sheet),
+                            "text/plain; charset=utf-8")
+        return json_response(sheet)
+
     def dtc_lookup(self, code: Optional[str], maker: Optional[str] = None) -> dict:
         self._ensure()
         if not code or not str(code).strip():
@@ -541,8 +589,9 @@ class DiagService:
             "endpoints": {
                 "/health": "lane + OBD state",
                 "/scan": "full scan (add ?sections=discovery,dtc,pending,"
-                         "readiness,mode06,identity,live)",
+                         "readiness,mode06,identity,live,allpids)",
                 "/report": "rendered report (?format=text|csv|json)",
+                "/capability": "compatibility sheet (?format=json|text)",
                 "/dtc": "DTC text lookup (?code=P0401&maker=volkswagen)",
                 "/vin": "VIN decode (?vin=...&online=0|1)",
                 "POST /ui/hide": "hide our own Hudiy overlay (the Exit button)",
@@ -584,6 +633,9 @@ class DiagService:
             if target == "/report":
                 return self.report_response(
                     forced_format or _first(query, "format") or "text")
+            if target == "/capability":
+                return self.capability(
+                    forced_format or _first(query, "format") or "json")
             if target == "/dtc":
                 return json_response(self.dtc_lookup(_first(query, "code"),
                                                      _first(query, "maker")))

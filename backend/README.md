@@ -17,7 +17,8 @@ backend/
     hosts.py         the three ways to reach a car: bridge / standalone / replay
     lane.py          one-scan-at-a-time link + freshness/staleness health
     scan.py          the scan itself (phases: discovery, dtc, pending,
-                     readiness, mode06, identity, live)
+                     readiness, mode06, identity, live, allpids)
+    capability.py    compatibility sheet from a finished report (no car I/O)
     decoders.py      OBD bytes -> engine numbers / monitor status
     protocol.py      request framing and response parsing (multi-frame safe)
     vin.py           VIN validation + offline WMI decode (+ optional online)
@@ -57,8 +58,9 @@ need the car degrades instead of erroring - see the next section.
 | Endpoint | Answers |
 | --- | --- |
 | `/health` (alias `/diag/status`) | `{ok, mode, uptime, obd:{state,reason}, dtc_db, scan, fixture}`. Always 200 while the process is alive. |
-| `/scan` | Runs a scan and returns `{ok, status, sections, obd, summary, report}`. `?sections=dtc,readiness` runs only those phases; unknown names -> 400. |
+| `/scan` | Runs a scan and returns `{ok, status, sections, obd, summary, report}`. `?sections=dtc,readiness` runs only those phases; unknown names -> 400. Full phase list: `discovery,dtc,pending,readiness,mode06,identity,live,allpids`. |
 | `/report` | The last report. `?format=text\|csv\|json` (default text). Runs a scan first if none has happened yet. |
+| `/capability` | The compatibility sheet for this car: PID support banks, Mode 06 MID list, observed mode support, captured identity, app version + data source. `?format=json\|text` (default json); text pastes straight into a GitHub issue. Built from the last report without touching the car (scans first only when no report exists yet). |
 | `/dtc` | `?code=P0401[&maker=VOLKSWAGEN]` -> generic + maker-specific text. Missing `code` -> 400. |
 | `/vin` | `?vin=WVWZZZ1KZAW555555[&online=1][&maker=...]` -> validated VIN + WMI/model-year. `online=1` adds the bounded nmvtis lookup. |
 
@@ -107,6 +109,8 @@ car or per install. The ones worth knowing:
 | `DIAG_QUERY_SPACING_S` | `0.45` | Inter-query spacing on the shared lane |
 | `DIAG_SCAN_DEADLINE_S` | `300` | Whole-scan ceiling; the engine aborts cleanly past it |
 | `DIAG_STALE_AGE_S` / `DIAG_STALE_CONFIRM` | `12` / `2` | When a connected-but-silent adapter is called stale (the "stale ObdManager" hazard) |
+| `DIAG_MODE06_WALK_RANGES` | `1` | Walk every advertised Mode 06 support page (0600, 0620, ...); `0` reads 0600 only |
+| `DIAG_MODE06_MAX_MIDS` | `24` | Cap on OBDMIDs queried in the mode06 phase (advertised first, then the probe list) |
 | `DIAG_DTC_DB` / `DIAG_DTC_DEFAULT_MAKER` | bundled Wal33D DB / empty | Fault-code text; absent DB degrades to code-only, it does not fail |
 | `DIAG_VIN_DECODE` / `DIAG_VIN_DECODE_TIMEOUT_S` | `1` / `6` | Online VIN lookup and its bound |
 | `DIAG_LOG_LEVEL` | `INFO` | Stdlib logging to stderr |
@@ -120,7 +124,9 @@ python3 -m unittest discover -s backend -t .        # from the repo root
 ```
 
 `backend/tests/test_diag_core.py` covers framing/decoding against captured
-fixtures (positive *and* negative). `backend/tests/test_diag_server.py` drives
+fixtures (positive *and* negative). `backend/tests/test_diag_maxdata.py`
+covers the max-data pack: bitmap-chain walks, the full-PID read, and the
+capability sheet. `backend/tests/test_diag_server.py` drives
 the HTTP lane over a real loopback socket in replay mode and then asserts the
 degradation contract with fake links (asleep car, stale handle, missing fixture,
 concurrent scan, bad input). No car and no network are required.

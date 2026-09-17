@@ -32,14 +32,15 @@ from .lane import STATE_SCANNING, DiagLink, HostAdapter, QueryResult
 #: Fault-query command -> report key.
 _CODE_KEYS = {"03": "stored", "07": "pending", "0A": "permanent"}
 
-#: Support-bitmap probes. Each one answers "which of the next 32 ids exist".
-DISCOVERY_COMMANDS: Sequence[tuple] = (
-    ("0100", "Supported PIDs 01-20"),
-    ("0120", "Supported PIDs 21-40"),
-    ("0140", "Supported PIDs 41-60"),
-    ("0160", "Supported PIDs 61-80"),
-    ("0600", "Supported OBDMIDs (Mode 06)"),
-    ("0620", "Supported OBDMIDs 21-40 (Mode 06)"),
+#: Bounds for the bitmap-chain walks below. J1979 defines Mode 01 PID ranges
+#: 00..E0 and Mode 06 OBDMID pages 00..E0; 8 pages is the whole address space,
+#: so neither walk can ever be open-ended (AGENTS.md loop discipline).
+PID_WALK_MAX_PAGES = 8
+OBDMID_WALK_MAX_PAGES = 8
+
+#: Single probes that are not part of any chain: Mode 09 infotypes and the
+#: Mode 02 freeze-frame support bitmap.
+DISCOVERY_SINGLES: Sequence[tuple] = (
     ("0900", "Supported info types (Mode 09)"),
     ("0200", "Freeze-frame support (Mode 02)"),
 )
@@ -72,6 +73,11 @@ LIVE_PIDS: Sequence[int] = (
     0x30, 0x31, 0x33, 0x3C, 0x42, 0x51, 0x5C,
 )
 
+#: Bitmap-query PIDs carry bitmaps, not scalar values, and discovery already
+#: decoded them - so the full-PID read skips them instead of re-reading the
+#: same bitmaps as fake data rows.
+BITMAP_PIDS = frozenset({0x00, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0})
+
 #: Identity, in the order a human wants to see it. 0904/0906 are multi-frame
 #: and are attempted once, guarded (V1_SPEC: "0904/0906 guarded").
 IDENTITY_COMMANDS: Sequence[tuple] = (
@@ -94,8 +100,11 @@ def _counter(link, name: str) -> int:
 #: Phases a caller may request on their own (``GET /scan?sections=dtc,readiness``).
 #: A full scan runs all of them; ``live`` is the extra phase that only means
 #: anything once discovery has run, so it is never implied by another section.
+#: ``allpids`` is the exhaustive sibling of ``live``: every advertised PID,
+#: read once each (Phase 3a max-data pack).
 SECTIONS: Sequence[str] = (
     "discovery", "dtc", "pending", "readiness", "mode06", "identity", "live",
+    "allpids",
 )
 
 
@@ -287,49 +296,20 @@ class ScanEngine:
         notes: List[str] = report["notes"]  # type: ignore[assignment]
 
         # 1. discovery ---------------------------------------------------------
+        # Support bitmaps are CHAINS, not fixed lists: each bitmap's trailing
+        # bit says whether the next 0x20 range exists, so the walks below
+        # follow those bits. A car with PIDs past 0x60 is fully mapped; a car
+        # without them costs no extra queries. Every vehicle fact still comes
+        # from the wire - there is no vehicle list anywhere in this file.
         support = {"pids": {}, "obdmid": {}, "infotypes": [], "freeze_frame": None,
                    "bitmaps": {}}
         supported_pids: set = set()
-        for command, label in DISCOVERY_COMMANDS:
-            if not self._wants("discovery"):
-                break
-            if self._expired():
-                break
-            result = self.ask(command, label)
-            if self._should_abort(result) or self._expired():
-                break
-            decoded = result.decoded
-            entry = {}
-            if command.startswith("01"):
-                data = decoders.supported_pids(decoded)
-                entry = data
-                if data.get("ok"):
-                    base = int(command[2:], 16)
-                    support["bitmaps"][command] = data.get("bitmap_hex")
-                    for pid in data.get("pids") or []:
-                        supported_pids.add(pid)
-                    support["pids"]["01%02X" % base] = data.get("pids") or []
-            elif command.startswith("06"):
-                data = decoders.monitor_test_bitmap(decoded)
-                entry = data
-                if data.get("ok"):
-                    base = int(command[2:], 16)
-                    support["bitmaps"][command] = data.get("bitmap_hex")
-                    support["obdmid"]["06%02X" % base] = data.get("obdmids") or []
-            elif command.startswith("09"):
-                data = decoders.info_types(decoded)
-                entry = data
-                support["infotypes"] = data.get("infotypes") or []
-            elif command.startswith("02"):
-                data = {"raw": decoded.payload.hex().upper(),
-                        "supported_hint": decoded.status}
-                entry = data
-                support["freeze_frame"] = bool(decoded.payload)
-            report.setdefault("discovery", {})[command] = {  # type: ignore[arg-type]
-                "label": label,
-                "status": decoded.status,
-                "decoded": entry,
-            }
+        if self._wants("discovery"):
+            self._discover_pid_ranges(support, supported_pids, report)
+            if not self.abort_reason:
+                self._discover_obdmid_pages(support, report)
+            if not self.abort_reason:
+                self._discover_singles(support, report)
         report["support"] = support
         self._emit({"type": "phase", "phase": "discovery_done",
                     "supported_pids": sorted(supported_pids)})
@@ -433,7 +413,23 @@ class ScanEngine:
             live.append(entry)
         report["live"] = live
 
-        # 7. verdict + code enrichment ----------------------------------------
+        # 7. full-PID read ------------------------------------------------------
+        # Every advertised PID, read once each and decoded with the same table
+        # as the live phase. PIDs without a decoder stay raw-hex rows keyed by
+        # their hex id (pid_value() never invents a value); NO DATA stays an
+        # empty answer. Overlaps the live phase on purpose: each section must
+        # stand alone under ?sections=, so neither borrows the other's queries.
+        if self._wants("allpids"):
+            if not self._wants("discovery") or not supported_pids:
+                notes.append("allpids: no support bitmap in this scan "
+                             "(run the discovery phase), so nothing was read.")
+                report["allpids"] = []
+            else:
+                report["allpids"] = self._allpids(supported_pids)
+        else:
+            report["allpids"] = []
+
+        # 8. verdict + code enrichment ----------------------------------------
         # summarize_codes() buckets the decoded dtc_list() mappings on their
         # "mode", so it wants those mappings, not the flat code lists. When no
         # fault query ran at all (section filter) there is no summary, and that
@@ -461,9 +457,128 @@ class ScanEngine:
             "failures": _counter(self.link, "failures") - counters["failures"],
             "supported_pid_count": len(supported_pids),
             "supported_obdmid_count": sum(len(v) for v in support["obdmid"].values()),
+            "allpids_rows": len(report.get("allpids") or []),  # type: ignore[arg-type]
             "steps": len(self.steps),
         })
         return report
+
+    # --- discovery walks ---------------------------------------------------
+    def _record_discovery(self, report: dict, command: str, label: str,
+                          decoded, entry: dict) -> None:
+        report.setdefault("discovery", {})[command] = {
+            "label": label,
+            "status": decoded.status,
+            "decoded": entry,
+        }
+
+    def _discover_pid_ranges(self, support: dict, supported_pids: set,
+                             report: dict) -> None:
+        """Walk the Mode 01 support-bitmap chain (0100 -> 0120 -> ...).
+
+        Each bitmap's trailing bit advertises the next 0x20 range; the walk
+        follows those bits and stops at the first range that is unanswered
+        (without that bitmap no higher range can be known), has its
+        next-range bit clear, or would exceed the page bound. A NO DATA /
+        empty answer is recorded as the negative result it is, never an error.
+        """
+        base = 0x00
+        for _ in range(PID_WALK_MAX_PAGES):
+            if self._expired():
+                break
+            command = "01%02X" % base
+            label = "Supported PIDs %02X-%02X" % (base + 1, base + 0x20)
+            result = self.ask(command, label)
+            if self._should_abort(result) or self._expired():
+                break
+            decoded = result.decoded
+            data = decoders.supported_pids(decoded)
+            self._record_discovery(report, command, label, decoded, data)
+            if not data.get("ok"):
+                break
+            support["bitmaps"][command] = data.get("bitmap_hex")
+            for pid in data.get("pids") or []:
+                supported_pids.add(pid)
+            support["pids"]["01%02X" % base] = data.get("pids") or []
+            nxt = data.get("next_range")
+            if nxt is None or nxt <= base:
+                break
+            base = nxt
+
+    def _discover_obdmid_pages(self, support: dict, report: dict) -> None:
+        """Walk the Mode 06 support pages (0600 -> 0620 -> ...) like the PID walk.
+
+        ``DIAG_MODE06_WALK_RANGES=0`` keeps the walk to the first page only;
+        by default every page the ECU advertises is read, so monitors living
+        past 0x20 are discovered rather than only probed.
+        """
+        base = 0x00
+        for _ in range(OBDMID_WALK_MAX_PAGES):
+            if self._expired():
+                break
+            command = "06%02X" % base
+            label = "Supported OBDMIDs %02X-%02X" % (base + 1, base + 0x20)
+            result = self.ask(command, label)
+            if self._should_abort(result) or self._expired():
+                break
+            decoded = result.decoded
+            data = decoders.monitor_test_bitmap(decoded)
+            self._record_discovery(report, command, label, decoded, data)
+            if not data.get("ok"):
+                break
+            support["bitmaps"][command] = data.get("bitmap_hex")
+            support["obdmid"]["06%02X" % base] = data.get("obdmids") or []
+            nxt = data.get("next_range")
+            if nxt is None or nxt <= base \
+                    or not self.cfg.mode06_walk_ranges:
+                break
+            base = nxt
+
+    def _discover_singles(self, support: dict, report: dict) -> None:
+        for command, label in DISCOVERY_SINGLES:
+            if self._expired():
+                break
+            result = self.ask(command, label)
+            if self._should_abort(result) or self._expired():
+                break
+            decoded = result.decoded
+            if command.startswith("09"):
+                data = decoders.info_types(decoded)
+                support["infotypes"] = data.get("infotypes") or []
+            else:
+                data = {"raw": decoded.payload.hex().upper(),
+                        "supported_hint": decoded.status}
+                support["freeze_frame"] = bool(decoded.payload)
+            self._record_discovery(report, command, label, decoded, data)
+
+    # --- full-PID read -------------------------------------------------------
+    def _allpids(self, supported_pids: set) -> List[dict]:
+        """Read every advertised PID once, in ascending order.
+
+        Bitmap queries (0x00, 0x20, ...) are skipped - discovery already holds
+        their decoded bitmaps. Everything else is decoded with the standard
+        PID table; PIDs without a decoder come back as raw-hex rows under
+        their hex id, and NO DATA stays an empty answer. House discipline
+        (single-flight, <=15 s, one retry) comes from the lane, as always.
+        """
+        rows: List[dict] = []
+        for pid in sorted(supported_pids):
+            if pid in BITMAP_PIDS:
+                continue
+            if self._expired():
+                break
+            command = "01%02X" % pid
+            result = self.ask(command, names.pid_name(pid))
+            if self._should_abort(result) or self._expired():
+                break
+            entry = dict(decoders.pid_value(result.decoded))
+            # A no-data reply carries no PID byte, so pid_value() cannot say
+            # what was asked. Stamp it from the request, like the live phase.
+            if entry.get("pid") is None:
+                entry["pid"] = pid
+                entry["name"] = names.pid_name(pid)
+                entry["command"] = command
+            rows.append(entry)
+        return rows
 
     # --- Mode 06 -------------------------------------------------------------
     def _mode06(self, support: dict, notes: List[str]) -> List[dict]:

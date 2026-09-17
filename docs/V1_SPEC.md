@@ -96,3 +96,26 @@ Complete PID support map for this car (all captured):
 
 Backend specialist card first (this spec + ARCHITECTURE_NOTES + fixtures as
 constraint block), frontend card second consuming the backend contract.
+
+## Phase 3a — max-data pack (backend, 2026-09-17)
+
+Same hard rules as v1 (universal, menu-launched, proxy lane, query
+discipline, degraded-never-500). What it adds on top of the v1 scan:
+
+- **Full-PID read** — new `allpids` scan section (`GET
+  /scan?sections=allpids`, included in the full scan). Discovery walks the
+  Mode 01 bitmap chain (0100 -> 0120 -> ... following each bitmap's
+  next-range bit, max 8 pages) and `allpids` reads every advertised PID once
+  (bitmap queries skipped - already decoded), decoded with the existing PID
+  table; PIDs without a decoder render as raw-hex rows under their hex id,
+  NO DATA stays an empty answer.
+- **Full Mode 06 enumeration** — discovery walks the OBDMID pages the same
+  way (0600 -> 0620 -> ... until a page clears its next-page bit;
+  `DIAG_MODE06_WALK_RANGES=0` pins it to 0600). The mode06 phase queries every
+  advertised OBDMID plus the probe list, so unlisted-but-answering monitors
+  are enumerated; unnamed monitors stay raw (hex OBDMID/TID).
+- **Capability dump** — `GET /capability` (JSON) and
+  `GET /capability?format=text` (plain text for GitHub issues): PID banks,
+  Mode 06 MID list, observed mode support (02/05/0A as probed), captured
+  identity, app version + timestamp + data source (live|replay). Built from
+  the last report without touching the car.

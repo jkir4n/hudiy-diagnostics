@@ -267,6 +267,27 @@ def _text_live(lines: List[str], report: dict) -> None:
     lines.append("")
 
 
+def _text_allpids(lines: List[str], report: dict) -> None:
+    rows = report.get("allpids") or []
+    lines.append("FULL PID READ (every advertised PID, discovery order)")
+    lines.append(_rule())
+    if not rows:
+        lines.append("  no full-PID read in this scan"
+                     " (run the allpids section)")
+        lines.append("")
+        return
+    for entry in rows:
+        if not entry.get("ok"):
+            lines.append("  %-38s no data (%s)"
+                         % (entry.get("name") or entry.get("pid"),
+                            entry.get("error") or ""))
+            continue
+        lines.append("  %-38s %s %s"
+                     % (entry.get("name") or ("PID %s" % entry.get("pid")),
+                        _num(entry.get("value")), entry.get("unit") or ""))
+    lines.append("")
+
+
 def _hex_list(values) -> str:
     """Render PIDs/MIDs/TIDs as hex, tolerating int and pre-formatted entries.
 
@@ -364,6 +385,7 @@ def render_text(report: dict, title: str = "HUDIY DIAGNOSTICS REPORT") -> str:
     _text_readiness(lines, report)
     _text_monitor_tests(lines, report)
     _text_live(lines, report)
+    _text_allpids(lines, report)
     _text_support(lines, report)
     _text_notes(lines, report)
     _text_provenance(lines, report)
@@ -466,6 +488,16 @@ def _csv_live(rows: List[Tuple], report: dict) -> None:
                      entry.get("error") or entry.get("raw_hex") or ""))
 
 
+def _csv_allpids(rows: List[Tuple], report: dict) -> None:
+    for entry in report.get("allpids") or []:
+        rows.append(("allpids", entry.get("name") or ("PID %s" % entry.get("pid")),
+                     "0x%02X" % (entry.get("pid") or 0),
+                     _num(entry.get("value")) if entry.get("ok") else "",
+                     entry.get("unit") or "",
+                     "ok" if entry.get("ok") else "no-data",
+                     entry.get("error") or entry.get("raw_hex") or ""))
+
+
 def _csv_support(rows: List[Tuple], report: dict) -> None:
     """Which PIDs this car actually answered - a CSV reader needs that too."""
     support = report.get("support") or {}
@@ -498,6 +530,7 @@ def render_csv(report: dict) -> str:
     _csv_readiness(rows, report)
     _csv_monitor_tests(rows, report)
     _csv_live(rows, report)
+    _csv_allpids(rows, report)
     _csv_support(rows, report)
     _csv_notes(rows, report)
     buffer = io.StringIO()

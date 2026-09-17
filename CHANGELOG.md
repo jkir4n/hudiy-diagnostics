@@ -2,6 +2,17 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-17 — Max-data pack (backend, Phase 3a)
+
+### Added
+- `allpids` scan section (`GET /scan?sections=allpids`, in the full scan): reads every advertised PID once, decoded with the existing PID table; PIDs without a decoder render as raw-hex rows under their hex id, NO DATA stays an empty answer. Report text/CSV render the new block.
+- Bitmap-chain discovery: the Mode 01 walk (0100 -> 0120 -> ...) and the Mode 06 page walk (0600 -> 0620 -> ...) follow each bitmap's next-range bit (max 8 pages each; `DIAG_MODE06_WALK_RANGES=0` pins Mode 06 to 0600). Cars with PIDs/monitors past the old fixed depth are now fully mapped; cars without them cost fewer queries.
+- `GET /capability` (`?format=json|text`): compatibility sheet from the last report without touching the car — PID banks, Mode 06 MID list, observed mode support (02/05/0A as probed; 05 honestly "not probed"), captured identity, app version + timestamp + data source (live|replay). Text form pastes into a GitHub issue as-is.
+- `backend/tests/test_diag_maxdata.py`: 18 tests (chain walking incl. early-stop and walk-off, undecoded/unnamed rows, full Mode 06 enumeration of an unknown MID, capability shape + partial-scan flagging, `/capability` routes + alias + bad format).
+
+### Verified
+- Suite 115 passed / 2 skipped (baseline 97 / 2; skips are the pre-existing real-`Api_pb2` ones), plus replay manual check: full scan (61 queries, 22 PIDs advertised, EGR/boost via probe, 02/0A not-supported as recorded) and `/capability` JSON + text curl-verified against `DIAG_MODE=replay` on port 44499.
+
 ## 2026-09-17 — Published publicly (MIT)
 
 ### Changed

@@ -209,8 +209,11 @@ class Config:
     )
 
     # --- Mode 06 discovery ------------------------------------------------
-    #: Intra-range walk: query 0600, then 0620/0640/... while the range marker
-    #: bit says another range exists (mirrors the PID 00/20/40 walk).
+    #: Page walk: query 0600, then 0620/0640/... while each page's range marker
+    #: bit says another page exists (mirrors the PID 00/20/40 walk). Off means
+    #: only 0600 is read. The scan's Mode 06 phase then queries every
+    #: advertised OBDMID plus the probe list, so unlisted-but-answering
+    #: monitors are still enumerated.
     mode06_walk_ranges: bool = field(
         default_factory=lambda: _env_bool("DIAG_MODE06_WALK_RANGES", True)
     )
