@@ -2,6 +2,7 @@
 """Merge the Diagnostics fragments into a Hudiy config directory.
 
     python3 merge_config.py [CONFIG_DIR] [--port 44414] [--dry-run]
+    python3 merge_config.py [CONFIG_DIR] --remove [--dry-run]
 
 * CONFIG_DIR defaults to ``$HOME/.hudiy/share/config`` (the layout documented in
   docs/HUDIY_UI_API_INVENTORY.md). If it does not exist the script says so and
@@ -14,6 +15,12 @@
   crash or odd encoding can never leave a half-written config behind.
 * Idempotent: re-running after a port change updates the overlay's url, and
   re-running otherwise reports "already present" and writes nothing.
+* ``--remove`` reverses the merge: it drops exactly our overlay entry
+  (``identifier == "diag"``) and our menu item (the fragment's ``action``) and
+  leaves every other entry byte-for-byte alone. Absent file or absent entry is
+  a no-op ("already absent": no write, no backup); a second run is therefore
+  also a no-op. A file that is malformed or has the wrong top-level shape is
+  refused (clear message, non-zero exit, nothing written).
 
 Only the standard library is used, so this works on a bare Hudiy install.
 """
@@ -162,6 +169,95 @@ def merge_menu(config_dir, dry_run, stamp):
     return "inserted"
 
 
+def _load_or_refuse(path, what, allow_list=False):
+    """Read a live config file, or refuse it loudly (never half-handle it)."""
+    try:
+        doc, _existed = load_json(path, None)
+    except json.JSONDecodeError as exc:
+        raise SystemExit("%s is not valid JSON (%s) - refusing to touch it"
+                         % (path, exc))
+    if doc is None:  # absent file (or blank): nothing of ours can be in it.
+        return None
+    if allow_list and isinstance(doc, list):
+        return doc
+    if not isinstance(doc, dict):
+        raise SystemExit("%s is not an object - refusing to touch it" % path)
+    return doc
+
+
+def remove_overlays(config_dir, dry_run, stamp):
+    """Drop our overlay entry; every other entry is left exactly as it was."""
+    path = os.path.join(config_dir, "overlays.json")
+    with open(OVERLAY_FRAGMENT, "r", encoding="utf-8") as handle:
+        identifier = json.load(handle)["identifier"]
+    doc = _load_or_refuse(path, "overlays")
+    if doc is None:
+        print("    %s: already absent (no file)" % path)
+        return "already absent"
+    overlays = doc.get("overlays")
+    if overlays is None:
+        print("    %s: already absent (no 'diag' overlay)" % path)
+        return "already absent"
+    if not isinstance(overlays, list):
+        raise SystemExit("%s: 'overlays' is not an array - refusing to touch it"
+                         % path)
+    kept = [item for item in overlays
+            if not (isinstance(item, dict)
+                    and item.get("identifier") == identifier)]
+    if len(kept) == len(overlays):
+        print("    %s: already absent (no 'diag' overlay)" % path)
+        return "already absent"
+    if dry_run:
+        print("    [dry-run] %s: would remove overlay %r (backup + write)"
+              % (path, identifier))
+        return "removed"
+    saved = backup(path, stamp)
+    doc["overlays"] = kept
+    dump(path, doc)
+    print("    %s: removed overlay %r%s"
+          % (path, identifier, "" if saved is None else " (backup %s)"
+             % os.path.basename(saved)))
+    return "removed"
+
+
+def remove_menu(config_dir, dry_run, stamp):
+    """Drop our menu item; every other item is left exactly as it was."""
+    path = os.path.join(config_dir, "applications_menu.json")
+    with open(MENU_FRAGMENT, "r", encoding="utf-8") as handle:
+        action = json.load(handle)["action"]
+    doc = _load_or_refuse(path, "menu", allow_list=True)
+    if doc is None:
+        print("    %s: already absent (no file)" % path)
+        return "already absent"
+    if isinstance(doc, list):
+        wrapped = {"items": doc}
+    else:
+        wrapped = doc
+    items = wrapped.get("items")
+    if items is None:
+        print("    %s: already absent (no %r item)" % (path, action))
+        return "already absent"
+    if not isinstance(items, list):
+        raise SystemExit("%s: 'items' is not an array - refusing to touch it"
+                         % path)
+    kept = [item for item in items
+            if not (isinstance(item, dict) and item.get("action") == action)]
+    if len(kept) == len(items):
+        print("    %s: already absent (no %r item)" % (path, action))
+        return "already absent"
+    if dry_run:
+        print("    [dry-run] %s: would remove item %r (backup + write)"
+              % (path, action))
+        return "removed"
+    saved = backup(path, stamp)
+    wrapped["items"] = kept
+    dump(path, wrapped)
+    print("    %s: removed item %r%s"
+          % (path, action, "" if saved is None else " (backup %s)"
+             % os.path.basename(saved)))
+    return "removed"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("config_dir", nargs="?",
@@ -174,15 +270,33 @@ def main(argv=None):
                         help="full overlay url (overrides --port)")
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would change, write nothing")
+    parser.add_argument("--remove", action="store_true",
+                        help="reverse the merge: drop our overlay entry and "
+                             "menu item, leave everything else alone")
     args = parser.parse_args(argv)
 
-    url = args.url or "http://127.0.0.1:%d/app/diag.html" % args.port
     if not os.path.isdir(args.config_dir):
-        print("    no Hudiy config layout at %s - nothing to register "
-              "(menu/overlay entry skipped)" % args.config_dir)
+        if args.remove:
+            print("    no Hudiy config layout at %s - nothing to remove "
+                  "(already absent)" % args.config_dir)
+        else:
+            print("    no Hudiy config layout at %s - nothing to register "
+                  "(menu/overlay entry skipped)" % args.config_dir)
         return 0
 
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    if args.remove:
+        print("    removing overlay 'diag' + its menu item")
+        overlay_action = remove_overlays(args.config_dir, args.dry_run, stamp)
+        menu_action = remove_menu(args.config_dir, args.dry_run, stamp)
+        changed = [a for a in (overlay_action, menu_action)
+                   if a != "already absent"]
+        if changed and not args.dry_run:
+            print("    Hudiy must be restarted to read the change (it loads "
+                  "these files once at start)")
+        return 0
+
+    url = args.url or "http://127.0.0.1:%d/app/diag.html" % args.port
     print("    registering overlay 'diag' -> %s" % url)
     overlay_action = merge_overlays(args.config_dir, url, args.dry_run, stamp)
     menu_action = merge_menu(args.config_dir, args.dry_run, stamp)

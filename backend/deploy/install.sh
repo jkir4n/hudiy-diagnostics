@@ -4,7 +4,9 @@
 #   ./install.sh              install (or update) + start, then reboot to apply
 #   ./install.sh --no-reboot  install, but skip the closing reboot
 #   ./install.sh --dry-run    print what would happen, change nothing
-#   ./install.sh --uninstall  stop + remove the unit (keeps copied files)
+#   ./install.sh --uninstall  full removal: units + Hudiy entries + files + env,
+#                             then reboot so the menu entry disappears
+#                             (--no-reboot skips it, --dry-run only prints)
 #
 # No root required; no machine-specific values: everything comes from $HOME
 # and env overrides. Safe to re-run after every `git pull`.
@@ -83,16 +85,90 @@ if [ "$UNINSTALL" = "0" ] && ! command -v python3 >/dev/null; then
 fi
 
 if [ "$UNINSTALL" = "1" ]; then
+  say "uninstalling Hudiy Diagnostics (full removal)"
+  # Config reversal FIRST, while every copy of the merge script still exists.
+  # Same guarded pattern as the install step: no layout, nothing to unregister.
+  HUDIY_CONFIG_DIR="${DIAG_HUDIY_CONFIG_DIR:-$HOME/.hudiy/share/config}"
+  MERGE_SCRIPT="$REPO_DIR/frontend/hudiy/merge_config.py"
+  [ -f "$MERGE_SCRIPT" ] || MERGE_SCRIPT="$INSTALL_DIR/frontend/hudiy/merge_config.py"
+  if [ -d "$HUDIY_CONFIG_DIR" ]; then
+    if [ ! -f "$MERGE_SCRIPT" ]; then
+      echo "    merge script not found - Hudiy entries left in place:"
+      echo "      remove the 'diag' overlay + 'diag_show' menu item by hand from"
+      echo "      $HUDIY_CONFIG_DIR"
+    elif ! command -v python3 >/dev/null; then
+      echo "    python3 not found - Hudiy entries left in place (remove by hand)"
+    elif [ "$DRY_RUN" = "1" ]; then
+      # merge --dry-run is side-effect-free (writes nothing, no backups), so
+      # run it for real: the dry-run plan names the exact entries to go.
+      python3 "$MERGE_SCRIPT" "$HUDIY_CONFIG_DIR" --remove --dry-run \
+        || echo "    WARNING: config reversal refused - entries left in place"
+    else
+      # A refused file must not pin the units/files behind it: warn loudly
+      # and carry on (re-run after fixing the config to finish the job).
+      run python3 "$MERGE_SCRIPT" "$HUDIY_CONFIG_DIR" --remove \
+        || echo "    WARNING: config reversal failed - entries left in place"
+    fi
+    left_backup=0
+    for bak in "$HUDIY_CONFIG_DIR"/*.bak-*; do
+      [ -e "$bak" ] || continue
+      left_backup=1
+      break
+    done
+    if [ "$left_backup" = "1" ]; then
+      echo "    config backups left in place: $HUDIY_CONFIG_DIR/*.bak-*"
+    fi
+  else
+    echo "    no Hudiy config layout at $HUDIY_CONFIG_DIR - nothing to unregister"
+  fi
+
   need_systemctl_user
-  say "stopping and removing $UNIT_NAME"
+  say "stopping and removing user units"
   run systemctl --user disable --now "$SERVICE" || true
-  run rm -f "$UNIT_DIR/$UNIT_NAME"
+  if [ -e "$UNIT_DIR/$UNIT_NAME" ]; then
+    run rm -f "$UNIT_DIR/$UNIT_NAME"
+  else
+    echo "    $UNIT_DIR/$UNIT_NAME not present - skipped"
+  fi
   run systemctl --user disable --now "hudiy-diag-keys" || true
-  run rm -f "$UNIT_DIR/hudiy-diag-keys.service"
+  if [ -e "$UNIT_DIR/hudiy-diag-keys.service" ]; then
+    run rm -f "$UNIT_DIR/hudiy-diag-keys.service"
+  else
+    echo "    $UNIT_DIR/hudiy-diag-keys.service not present - skipped"
+  fi
   run systemctl --user daemon-reload
-  say "removed. Copied files left in $INSTALL_DIR (delete by hand if wanted)."
-  echo "    Hudiy menu/overlay entries are left untouched - remove them from"
-  echo "    ~/.hudiy/share/config if wanted (they are inert without the unit)."
+
+  say "removing copied tree $INSTALL_DIR"
+  if [ ! -e "$INSTALL_DIR" ]; then
+    echo "    not present - skipped"
+  elif [ -f "$INSTALL_DIR/backend/server.py" ] \
+      || [ -f "$INSTALL_DIR/frontend/diag.html" ]; then
+    run rm -rf "$INSTALL_DIR"
+  else
+    echo "    WARNING: $INSTALL_DIR does not look like a diagnostics install"
+    echo "    (no backend/server.py or frontend/diag.html) - left in place"
+  fi
+
+  say "removing env file $ENV_DIR/env"
+  if [ -f "$ENV_DIR/env" ]; then
+    run rm -f "$ENV_DIR/env"
+  else
+    echo "    not present - skipped"
+  fi
+  if [ -d "$ENV_DIR" ]; then
+    run rmdir "$ENV_DIR" 2>/dev/null \
+      || echo "    $ENV_DIR not empty - left in place"
+  else
+    echo "    $ENV_DIR not present - skipped"
+  fi
+
+  echo "    left untouched, explicitly: 'input' group membership, install"
+  echo "    backups (*.bak-*), race-dash (charts + its /diag/obd bridge route),"
+  echo "    the hudiy-reboot daemon, all other apps' menu/overlay entries,"
+  echo "    Hudiy logs."
+  say "uninstall complete (anything above marked skipped/not-present was already gone)"
+  echo "    the Hudiy menu entry disappears once Hudiy restarts"
+  apply_reboot
   exit 0
 fi
 

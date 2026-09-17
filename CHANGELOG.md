@@ -2,6 +2,22 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-17 — Uninstall: full edge-case-hardened removal (Phase 3c)
+
+### Added
+- `frontend/hudiy/merge_config.py --remove`: reverse-merge reusing the existing primitives (BOM-tolerant reads, timestamped backups, atomic tmp+rename). Drops exactly the overlay with `identifier == "diag"` and the menu item matching our fragment's `action`; every other entry stays deep-equal. Absent file/entry (or missing config dir) is a no-op ("already absent": no write, no backup); malformed JSON or wrong top-level shape is refused (clear message, non-zero exit, nothing written); `--dry-run` prints the plan and changes nothing. Second run is always clean.
+- `backend/deploy/install.sh --uninstall` is now a FULL removal, in order: Hudiy config reversal first (`merge_config.py --remove`, same guarded layout check as install), then both user units (stop + disable + remove + daemon-reload), then the copied tree (only after it proves it is ours — `backend/server.py` or `frontend/diag.html` present; a foreign `DIAG_INSTALL_DIR` is left alone with a warning), then the env file (+ the env dir when empty). Closes with a reboot so the menu entry disappears (`--no-reboot` skips, `--dry-run` only prints). Explicitly untouched: `input` group, install backups (`*.bak-*`), race-dash (+ its `/diag/obd` bridge route), hudiy-reboot daemon, other apps' entries, Hudiy logs. Clean-machine and partial-install runs are honest no-ops (exit 0).
+- `uninstall-bootstrap.sh` (repo root): mirrors `install-bootstrap.sh` (SELF-detection + `DIAG_REPO_REMOTE` clone-into-temp for the piped case), delegates to `install.sh --uninstall "$@"`. One-liner in `README.md`.
+- `backend/tests/test_merge_config.py`: 14 tests (only-ours removal incl. similar-name decoys, deep-equal preservation, absent no-ops, malformed/wrong-shape refusal, BOM, dry-run, no `.tmp`, idempotence, merge -> remove round-trip, list-form menu).
+- `backend/tests/test_install_uninstall.py`: 8 tests running `install.sh` for REAL in a temp HOME (fake `systemctl`, temp Hudiy layout, stub `/health` server): full uninstall (units/tree/env gone, decoys survive, disable + daemon-reload recorded), second-run no-op, `--dry-run` byte-identical tree hash, install -> uninstall round-trip, foreign install-dir safety, partial and empty installs, malformed-config refusal that still removes units/files.
+
+### Verified
+- Suite 139 tests OK (2 skipped: the pre-existing real-`Api_pb2` ones) — baseline was 115 passed / 2 skipped; the 22 new tests also pass under pytest.
+- Desk-based only (car off): no SSH/Pi/deploy. LIVE bench trial DEFERRED to the next on-car session — exact procedure: (1) install (`bash install-bootstrap.sh --no-reboot` or piped), verify `:44414/health` + Diagnostics menu entry after Hudiy restart; (2) uninstall (`bash uninstall-bootstrap.sh --no-reboot`), verify units gone (`systemctl --user status hudiy-diagnostics hudiy-diag-keys`), tree + env gone, `diag`/`diag_show` absent from the live config while other entries remain; (3) reboot, verify the menu entry is gone; (4) reinstall, verify exactly one `diag` overlay + one `diag_show` item (no duplicates).
+
+### Docs
+- Root `README.md`: uninstall section + one-line command. `backend/README.md`: deploy uninstall subsection. `frontend/hudiy/README.md`: remove-mode section. `install.sh` header help rewritten (the old "keeps copied files / remove by hand" lines are gone).
+
 ## 2026-09-17 — Max-data pack (frontend, Phase 3b)
 
 ### Added

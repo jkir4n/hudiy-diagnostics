@@ -15,6 +15,15 @@ bash <(curl -fsSL https://raw.githubusercontent.com/jkir4n/hudiy-diagnostics/mas
 ```
 Installs user units + the wheel/knob shim, registers the Hudiy menu entry, health-checks `:44414`, then reboots so every change is picked up on the fresh boot (Hudiy reads its config at start). `--no-reboot` skips the reboot; `--dry-run` shows everything without touching anything. The one thing it cannot do for you is printed at the end (the `input` group for the knob shim). Underneath it runs `backend/deploy/install.sh`.
 
+## Uninstall (one line, no root)
+
+```
+bash <(curl -fsSL https://raw.githubusercontent.com/jkir4n/hudiy-diagnostics/master/uninstall-bootstrap.sh)
+```
+or, from a clone: `bash uninstall-bootstrap.sh` (flags pass through, e.g. `--no-reboot`, `--dry-run`).
+
+Removes both user units, reverses the Hudiy menu/overlay merge (other apps' entries untouched), deletes the copied tree (only if it looks like ours) and the env file, then reboots so the menu entry disappears. Leaves the `input` group, install backups (`*.bak-*`), race-dash, logs — and prints exactly what it kept. Idempotent: safe to re-run; a clean machine reports skipped/not-present and exits 0.
+
 ## Repository layout
 ```
 docs/

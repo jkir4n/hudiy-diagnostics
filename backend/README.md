@@ -141,7 +141,7 @@ both halves of the product:
 ```bash
 ./backend/deploy/install.sh              # install/update + start (no root)
 ./backend/deploy/install.sh --dry-run    # show what it would do
-./backend/deploy/install.sh --uninstall  # stop + remove the unit
+./backend/deploy/install.sh --uninstall  # full removal (units + Hudiy entries + files + env)
 ```
 
 The installer copies `backend/` + `frontend/` + `fixtures/` into
@@ -152,6 +152,21 @@ enables it, then polls `/health` and prints the result. Per-instance settings
 live in `~/.config/hudiy-diagnostics/env`; the installer creates that file only
 if it is missing. Re-run it after every `git pull` - it is idempotent and
 replaces the copied trees.
+
+### Uninstall (full removal, idempotent)
+
+`install.sh --uninstall` (one-liner: `bash uninstall-bootstrap.sh`) reverses
+everything, in this order: Hudiy config reversal first
+(`merge_config.py --remove` against `DIAG_HUDIY_CONFIG_DIR`, skipped with a
+note when the layout is absent), then both user units
+(stop + disable + remove + daemon-reload), then the copied tree (only after a
+safety check it looks like ours - `backend/server.py` or `frontend/diag.html`
+present; a foreign `DIAG_INSTALL_DIR` is left alone with a warning), then the
+env file (plus the env dir when empty). It reboots at the end so the removed
+menu entry disappears (`--no-reboot` skips; `--dry-run` prints the whole plan
+and changes nothing). Explicitly left untouched: the `input` group, install
+backups (`*.bak-*`), race-dash, the hudiy-reboot daemon, other apps' entries,
+Hudiy logs. Running it on a clean machine is a no-op (exit 0).
 
 ### Hudiy registration (menu entry + overlay)
 

@@ -38,6 +38,23 @@ Live config directory (see `docs/HUDIY_UI_API_INVENTORY.md`):
 `backend/deploy/install.sh` runs this step automatically, and only when the
 config directory exists.
 
+## Removing
+
+    python3 frontend/hudiy/merge_config.py --remove             # drop our entries
+    python3 frontend/hudiy/merge_config.py --remove --dry-run   # show, change nothing
+
+* Reverse-merge: removes exactly the overlay whose `identifier == "diag"` and
+  the menu item whose `action` matches our fragment (`diag_show`). Every other
+  entry is left deep-equal; a merge -> remove round-trip restores the files'
+  other content semantically identical to pre-merge.
+* No-op when there is nothing to do (absent file, absent entry, missing config
+  directory): prints "already absent", writes nothing, takes no backup — so a
+  second run is always clean.
+* Refuses files it does not understand (malformed JSON, wrong top-level
+  shape): clear message, non-zero exit, nothing written.
+* `backend/deploy/install.sh --uninstall` runs this step first, before any
+  file deletion.
+
 ## Hudiy must be restarted (never live-patched)
 
 Hudiy reads both files once, at start. After registering, restart Hudiy through
