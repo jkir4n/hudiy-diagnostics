@@ -5,7 +5,7 @@ whatever the head unit is doing. It talks to the diagnostics lane over HTTP and
 ships no framework, no build step and no node_modules - three static files served
 by the lane itself.
 
-    frontend/diag.html          the nine screens (S0-S8), empty shells filled by JS
+    frontend/diag.html          the eleven screens (S0-S10), empty shells filled by JS
     frontend/diag.css           the 800x480 kiosk skin
     frontend/diag.js            input engine, data layer, renderers
     frontend/hudiy/             Hudiy registration fragments + merge script + note
@@ -37,11 +37,13 @@ remembered in `localStorage` and can be flipped on screen S8.
     S3  fault codes     tabs: stored / pending / permanent
     S4  code detail     one code: decoded text, severity, freeze-frame status
     S5  readiness       monitor wall + "how to complete them" guidance
-    S6  monitor tests   Mode 06 test results, raw-value toggle
+    S6  monitor tests   Mode 06 test results, per-row raw expanders
     S7  vehicle         VIN, calibration IDs, ECU name, identifier support
-    S8  report          text / csv / json + download, and the settings block
+    S8  report          text / csv / json + download, compatibility entry, and the settings block
+    S9  deep scan       full-PID read: decoded values, raw-hex rows, honest no-data
+    S10 compatibility   capability dump (support map, MIDs, identity, version) + copy/download export
 
-S3, S5, S6, S7 and S8 are tabs off S2 because 800x480 has no room for a nav rail.
+S3, S5, S6, S7 and S9 are tabs off S2, and S10 off S8, because 800x480 has no room for a nav rail.
 
 ## Input parity (V1_SPEC rule 6)
 
@@ -60,14 +62,19 @@ input only.
 | S0 | start scan | footer button, or the "Start scan" tile | move + `onTriggered` | move + `Enter` |
 | S1 | cancel scan | footer button only (it stays focused) | move + `onTriggered` | `Enter` on it |
 | S2 | open S3/S5/S6/S7 | tap a tile | move + `onTriggered` | move + `Enter` |
+| S2 | run deep scan | footer button | move + `onTriggered` | move + `Enter` |
 | S3 | switch stored/pending/permanent | tap tab | `onGoLeft` / `onGoRight` | `ArrowLeft` / `ArrowRight` |
 | S3 | open a code | tap row | move + `onTriggered` | move + `Enter` |
 | S4 | next / previous code in the tab | footer buttons | `onGoLeft` / `onGoRight` | `ArrowLeft` / `ArrowRight` |
 | S5 | show/hide drive-cycle guidance | tap the toggle | move + `onTriggered` | move + `Enter` |
 | S6 | raw values on/off | tap the toggle | move + `onTriggered` | move + `Enter` |
+| S6 | expand a test's raw record | tap the test row | move + `onTriggered` | move + `Enter` |
 | S7 | decode VIN online / offline | footer button | move + `onTriggered` | move + `Enter` |
 | S8 | text / csv / json | tap tab | `onGoLeft` / `onGoRight` | `ArrowLeft` / `ArrowRight` |
 | S8 | download, scope, bridge mode | tap | move + `onTriggered` | move + `Enter` |
+| S8 | open compatibility (S10) | footer button | move + `onTriggered` | move + `Enter` |
+| S9 | run deep scan | footer button | move + `onTriggered` | move + `Enter` |
+| S10 | copy sheet, download .txt | tap | move + `onTriggered` | move + `Enter` |
 
 Bridge details:
 
@@ -121,5 +128,6 @@ result. Never say ready when the ECU does not answer.
 * S1 progress is an indeterminate sweep, not a percentage: the lane answers
   `/scan` as one request, so the page has no in-flight section signal and does
   not invent one. The section chips are a legend of what the scan reads and turn
-  green only when the report lands. Real section-by-section progress needs the
+  green only when the report lands. A deep scan filters the legend to
+  discovery+allpids. Real section-by-section progress needs the
   backend to publish the in-flight stage in `/health` first.

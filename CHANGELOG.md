@@ -2,6 +2,18 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-17 — Max-data pack (frontend, Phase 3b)
+
+### Added
+- S9 Deep scan (`frontend/diag.html`, `diag.js` `renderDeep`): entry from the S2 footer (or any time — it runs its own discovery), progress on the shared S1 screen with a discovery+allpids legend, then a results grid — decoded values where the table knows them, bare-hex rows for unscaled answers, `no data` where the ECU stayed silent, plus a decoded/raw/silent breakdown. A deep run lands in its own store and never clobbers the cached health report; a full scan already carries the same rows, so S9 reads those when no deep run exists.
+- S6 full Mode 06 view: every enumerated block renders, including unanswered ones (honest `Not answered (…)` with advertised-vs-probed note); every test row is an expander (tap / knob / key) revealing the raw record, raw value/min/max and the scaling note; unknown-scalings show raw ints instead of dashes.
+- S10 Compatibility (`renderCompat` + `loadCap`): capability dump from `GET /capability` — PID banks, Mode 06 MID list, observed mode support, captured identity, app version + coverage — plus the paste-ready sheet text with Copy (clipboard + fallback) and Download `.txt` export actions, entered from the S8 footer.
+- S1 legend gains the `allpids` chip; S8 download link joins the knob focus ring (was touch-only).
+
+### Verified
+- Replay backend (`DIAG_MODE=replay`, port 44414): every new route curl-verified (`/scan?sections=discovery,allpids` → 20 rows; `/capability` JSON + text; `/diag/capability` alias).
+- Scripted browser walk (`?bridge=dom`, 31 checks, zero console errors): full scan → S2; deep scan → S9 (decoded rpm renders, silence stays `no data`); S6 expander opens raw records; S10 shows VIN/banks/MIDs/sheet text after a full scan and honest `partial scan (allpids, discovery)` + `not reported` identity after a deep-only scan; `window.__diagKeyNav` reaches and fires Deep scan pointer-free; arrow-key fallback re-runs it. Screenshots reviewed (one real find fixed: headline/breakdown counting + a duplicated raw-hex value).
+
 ## 2026-09-17 — Max-data pack (backend, Phase 3a)
 
 ### Added

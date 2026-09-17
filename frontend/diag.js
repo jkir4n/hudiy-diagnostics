@@ -16,9 +16,9 @@
  * (auto-detect by default: bridge once Hudiy attaches, DOM until then).
  *
  * The page never talks to the OBD adapter. It reads the backend HTTP lane only
- * (same origin, so no CORS dance): /health, /scan, /report, /dtc, /vin.
- * Everything the UI shows comes from those responses - no vehicle knowledge is
- * baked in here.
+ * (same origin, so no CORS dance): /health, /scan, /report, /capability,
+ * /dtc, /vin. Everything the UI shows comes from those responses - no vehicle
+ * knowledge is baked in here.
  */
 
 (function () {
@@ -26,7 +26,8 @@
 
   var HEALTH_MS = 5000;      // slow poll: link state + replay badge
   var SCAN_LINK_MS = 1200;   // faster only while a scan is in flight
-  var SECTIONS = ['discovery', 'dtc', 'pending', 'readiness', 'mode06', 'identity', 'live'];
+  var SECTIONS = ['discovery', 'dtc', 'pending', 'readiness', 'mode06', 'identity', 'live', 'allpids'];
+  var DEEP = ['discovery', 'allpids'];
   var QUICK = ['dtc', 'pending', 'readiness'];
   var TOAST_MS = 5200;
 
@@ -179,6 +180,13 @@
     busy: false,
     guidance: false,
     raw: false,
+    expanded: {},    // Mode 06 raw expanders, key "obdmid:tid" -> true
+    deep: null,      // deep-scan result {rows, at, duration_s} - never clobbers S.scan
+    cap: null,       // capability JSON once /capability has answered
+    capText: null,   // paste-ready sheet text for the export actions
+    capState: 'idle',
+    scanKind: null,  // 'full' | 'quick' | 'deep' while S.busy
+    scanSections: null, // legend filter for the in-flight scan (S1)
     started: 0,
     scanAbort: null,
     linkTimer: null,
@@ -194,10 +202,12 @@
     S5: { title: 'Readiness', subtitle: 'Monitor wall' },
     S6: { title: 'Monitor tests', subtitle: 'Mode 06' },
     S7: { title: 'Vehicle', subtitle: 'Identity' },
-    S8: { title: 'Report', subtitle: 'Settings' }
+    S8: { title: 'Report', subtitle: 'Settings' },
+    S9: { title: 'Deep scan', subtitle: 'Every advertised PID' },
+    S10: { title: 'Compatibility', subtitle: 'This car, this app' }
   };
 
-  var PARENT = { S1: 'S0', S2: 'S0', S3: 'S2', S4: 'S3', S5: 'S2', S6: 'S2', S7: 'S2', S8: 'S0' };
+  var PARENT = { S1: 'S0', S2: 'S0', S3: 'S2', S4: 'S3', S5: 'S2', S6: 'S2', S7: 'S2', S8: 'S0', S9: 'S2', S10: 'S8' };
 
   function screenEl(id) { return $(id || S.screen); }
 
@@ -263,6 +273,8 @@
     if (S.screen === 'S6') { renderTests(); }
     if (S.screen === 'S7') { renderIdentity(); }
     if (S.screen === 'S8') { renderReport(); }
+    if (S.screen === 'S9') { renderDeep(); }
+    if (S.screen === 'S10') { renderCompat(); }
     renderActions();
     paintFocus();
   }
@@ -363,13 +375,16 @@
       }
     }
     $('scanTimer').textContent = num(S.elapsed, 1) + 's';
-    var note = S.scope === 'quick'
-      ? 'Quick scan: fault codes, pending codes and the readiness wall only.'
-      : 'A full scan reads the supported-PID map, stored / pending / permanent codes, the ' +
-        'readiness wall, Mode 06 monitor tests and vehicle identity - usually under 30 seconds.';
-    if (S.degraded) { note = 'Last attempt: ' + (S.degraded.reason || S.degraded.status) + '.'; }
+    var note = S.scanKind === 'deep'
+      ? 'Deep read: every PID this car advertises, read one by one and decoded where the table knows it.'
+      : (S.scope === 'quick'
+        ? 'Quick scan: fault codes, pending codes and the readiness wall only.'
+        : 'A full scan reads the supported-PID map, stored / pending / permanent codes, the ' +
+          'readiness wall, Mode 06 monitor tests, vehicle identity and every advertised PID ' +
+          '- usually under a minute on a live link.');
+    if (S.degraded && S.scanKind !== 'deep') { note = 'Last attempt: ' + (S.degraded.reason || S.degraded.status) + '.'; }
     $('scanNote').textContent = note;
-    var sec = (S.scan && S.scan.sections) ? S.scan.sections : null;
+    var sec = S.scanSections;
     for (var j = 0; j < steps.children.length; j++) {
       var name = steps.children[j].getAttribute('data-section');
       var wanted = !sec || sec.indexOf(name) !== -1;
@@ -886,23 +901,55 @@
       add(head, title);
       list.appendChild(head);
 
+      if (!rec.ok || !(rec.tests || []).length) {
+        var na = el('li');
+        add(na, el('p', 'stamp', 'Not answered' +
+          (rec.error || rec.status ? ' (' + (rec.error || rec.status) + ')' : '') +
+          (rec.advertised ? ' \u00b7 advertised by this ECU.' : ' \u00b7 probed, not advertised by this ECU.')));
+        list.appendChild(na);
+      }
+
       (rec.tests || []).forEach(function (t) {
+        var key = rec.obdmid + ':' + t.tid;
+        var open = !!S.expanded[key];
         var li = el('li');
-        var row = el('div', 'row flat');
+        var row = el('button', 'row ctl');
+        row.type = 'button';
+        row.setAttribute('aria-expanded', open ? 'true' : 'false');
         var main = el('div', 'row-main');
         add(main, el('div', 'row-text', t.tid_name || ('TID 0x' + (t.tid || 0).toString(16))));
-        var sub = (t.uas_name || '') + ' \u00b7 limits ' + num(t.min && t.min.scaled, 0) + '..' +
-          num(t.max && t.max.scaled, 0) + (t.raw_hex && S.raw ? ' \u00b7 raw ' + t.raw_hex : '');
+        var sub = (t.uas_name || '') + ' \u00b7 limits ' + mNum(t.min) + '..' + mNum(t.max) +
+          (mKnown(t.value) ? '' : ' \u00b7 unknown scaling') +
+          (t.raw_hex && S.raw ? ' \u00b7 raw ' + t.raw_hex : '');
         add(main, el('div', 'row-sub', sub));
         var value = el('div', 'row-value');
-        add(value, document.createTextNode(num(t.value && t.value.scaled, 0)));
-        if (t.value && t.value.unit) { add(value, el('span', 'row-unit', t.value.unit)); }
+        add(value, document.createTextNode(mNum(t.value)));
+        if (mKnown(t.value) && t.value.unit) { add(value, el('span', 'row-unit', t.value.unit)); }
         add(row, main, value);
         if (t.within_limits === true) { add(row, chip('ok', '\u2713', 'Within limits')); }
         else if (t.within_limits === false) { add(row, chip('bad', '!', 'Outside limits')); }
         else { add(row, chip('warn', '!', 'Unclear')); }
+        row.addEventListener('click', (function (k) {
+          return function () { S.expanded[k] = !S.expanded[k]; render(); };
+        })(key));
         add(li, row);
         list.appendChild(li);
+
+        if (open) {
+          var det = el('li');
+          var box = el('div', 'row flat');
+          var dmain = el('div', 'row-main');
+          add(dmain, el('div', 'row-text', 'Raw record'));
+          add(dmain, el('div', 'row-sub', 'raw ' + (t.raw_hex || '\u2013')));
+          var raws = 'value raw ' + num(t.value_raw, 0) +
+            ' \u00b7 min raw ' + num(t.min_raw, 0) +
+            ' \u00b7 max raw ' + num(t.max_raw, 0);
+          var note = (t.value && t.value.note) || '';
+          add(dmain, el('div', 'row-sub', note ? (raws + ' \u00b7 ' + note) : raws));
+          add(box, dmain);
+          add(det, box);
+          list.appendChild(det);
+        }
       });
 
       if (rec.parse_note || rec.layout_ambiguous) {
@@ -911,6 +958,106 @@
           'may be misread \u2014 shown as reported, not as a judgement.'));
         list.appendChild(note);
       }
+    });
+  }
+
+  /* A Mode 06 value/min/max part: scaled where the table knows the scaling,
+   * honest raw int where it does not (unknown UAS) - never a bare dash that
+   * reads as "no data" when bytes were actually captured. */
+  function mKnown(part) {
+    return !!(part && part.scaled !== null && part.scaled !== undefined);
+  }
+
+  function mNum(part) {
+    if (!part) { return '\u2013'; }
+    if (!mKnown(part)) { return 'raw ' + num(part.raw, 0); }
+    return num(part.scaled, 0);
+  }
+
+  /* ------------------------------------------------------- S9 deep scan */
+
+  /* The freshest full-PID read: a dedicated deep scan wins over the allpids
+   * rows cached inside the last full scan; both are the same row shape. */
+  function deepSource() {
+    if (S.deep && S.deep.rows && S.deep.rows.length) {
+      return { rows: S.deep.rows, from: 'deep', at: S.deep.at, duration_s: S.deep.duration_s };
+    }
+    var report = S.scan && S.scan.report ? S.scan.report : null;
+    if (report && report.allpids && report.allpids.length) {
+      return { rows: report.allpids, from: 'full', at: S.scanAt, duration_s: S.scan.duration_s };
+    }
+    return { rows: [], from: null, at: null, duration_s: null };
+  }
+
+  function pidHex(pid) {
+    return 'PID 0x' + (pid === null || pid === undefined ? '?' : Number(pid).toString(16).toUpperCase());
+  }
+
+  function renderDeep() {
+    var head = $('deepHead');
+    var list = $('deepList');
+    clear(head);
+    clear(list);
+    var src = deepSource();
+
+    if (!src.rows.length) {
+      head.setAttribute('data-sev', 'info');
+      add(head, el('p', 'verdict-headline', 'No full-PID read yet'));
+      add(head, el('p', 'verdict-sub',
+        'A deep scan reads every PID this car advertises, one by one. ' +
+        'Values the table knows are decoded; the rest stay raw hex; ' +
+        'silence stays "no data".'));
+      var li = el('li');
+      add(li, el('p', 'empty', 'Run a deep scan from the buttons below, or run a full scan - it includes the same read.'));
+      list.appendChild(li);
+      return;
+    }
+
+    var answered = 0, decoded = 0, raw = 0, silent = 0;
+    src.rows.forEach(function (r) {
+      if (!r.ok) { silent++; }
+      else { answered++; if (r.unit) { decoded++; } else { raw++; } }
+    });
+    head.setAttribute('data-sev', answered ? 'ok' : 'info');
+    var h = add(head, el('div', 'verdict-head'));
+    add(h, el('p', 'verdict-headline', answered + ' of ' + src.rows.length + ' answered'));
+    add(h, chip(answered ? 'ok' : 'info', answered ? '\u2713' : '\u2013',
+      silent ? (silent + ' silent') : 'all heard'));
+    add(head, el('p', 'verdict-sub',
+      (src.from === 'deep' ? 'Deep read' : 'From the last full scan') +
+      (src.at ? ' \u00b7 ' + src.at.toLocaleTimeString() : '') +
+      (src.duration_s !== null && src.duration_s !== undefined ? ' \u00b7 ' + num(src.duration_s, 1) + ' s' : '') +
+      '. Decoded ' + decoded + ' \u00b7 raw ' + raw + ' \u00b7 silent ' + silent + '.' +
+      ' Bitmap PIDs (0100, 0120, \u2026) are the support map itself and are read once during discovery, not re-read here.'));
+
+    src.rows.forEach(function (r) {
+      var item = el('li');
+      var row = el('div', 'row flat');
+      var main = el('div', 'row-main');
+      var unnamed = /\(unknown\)/.test(r.name || '');
+      add(main, el('div', 'row-text', (r.name && !unnamed) ? r.name : pidHex(r.pid)));
+      // The value column carries the outcome, so the sub line never repeats
+      // it: decoded rows show the raw hex here, raw rows name the gap instead.
+      var sub = unnamed ? 'no decoder for this PID' : pidHex(r.pid);
+      if (r.ok && r.raw_hex && r.unit) { sub += ' \u00b7 raw ' + r.raw_hex; }
+      if (r.ok && !r.unit) { sub += ' \u00b7 unscaled bytes'; }
+      if (!r.ok) { sub += ' \u00b7 ' + (r.error || r.status || 'no data'); }
+      add(main, el('div', 'row-sub', sub));
+      var value = el('div', 'row-value');
+      if (!r.ok) {
+        add(value, document.createTextNode('no data'));
+        value.style.color = 'var(--quiet)';
+        value.style.fontSize = '14px';
+      } else if (r.unit) {
+        add(value, document.createTextNode(num(r.value, 3)));
+        add(value, el('span', 'row-unit', r.unit));
+      } else {
+        add(value, document.createTextNode(r.raw_hex || num(r.value, 0)));
+        value.style.fontSize = '14px';
+      }
+      add(row, main, value);
+      add(item, row);
+      list.appendChild(item);
     });
   }
 
@@ -1118,6 +1265,173 @@
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 
+  /* ------------------------------------------------- S10 compatibility */
+
+  /* The sheet is built backend-side from the last finished report without
+   * touching the car, so this screen is a read plus two export actions. */
+  function loadCap() {
+    if (S.capState === 'loading') { return; }
+    S.capState = 'loading';
+    if (S.screen === 'S10') { render(); }
+    fetchJSON('/capability').then(function (res) {
+      if (res.ok && res.data && res.data.sheet) {
+        S.cap = res.data;
+        S.capState = 'text';
+        if (S.screen === 'S10') { render(); }
+        fetch('/capability?format=text', { cache: 'no-store', headers: { 'Accept': 'text/plain' } })
+          .then(function (r2) { return r2.text(); })
+          .then(function (body) {
+            S.capText = body;
+            S.capState = 'done';
+            if (S.screen === 'S10') { render(); }
+          })
+          .catch(function () {
+            S.capState = 'done';
+            if (S.screen === 'S10') { render(); }
+          });
+      } else {
+        S.capState = 'error';
+        S.cap = null;
+        toast('Compatibility sheet unavailable: ' + (res.error || 'no answer'), 'warn');
+        if (S.screen === 'S10') { render(); }
+      }
+    });
+  }
+
+  function capModeChip(state) {
+    if (state === 'answered') { return chip('ok', '\u2713', 'answers'); }
+    if (state === 'not-supported') { return chip('quiet', '\u2013', 'not on this car'); }
+    return chip('quiet', '\u2013', 'not probed');
+  }
+
+  function renderCompat() {
+    var wrap = $('compatWrap');
+    clear(wrap);
+    if (S.capState === 'idle' && !S.cap) { loadCap(); return; }
+    if (S.capState === 'loading' && !S.cap) {
+      add(wrap, el('p', 'empty', 'Reading the compatibility sheet\u2026'));
+      return;
+    }
+    if (!S.cap) {
+      add(wrap, el('p', 'empty',
+        'No compatibility sheet yet. Run a scan first - the sheet is built from the last finished report.'));
+      return;
+    }
+    var cap = S.cap;
+
+    var top = el('div', 'card verdict');
+    top.setAttribute('data-sev', 'info');
+    var h = add(top, el('div', 'verdict-head'));
+    add(h, el('p', 'verdict-headline', 'This car, this app'));
+    add(h, chip('info', '\u2013', cap.data_source === 'replay' ? 'replay data' : 'live data'));
+    var cov = cap.coverage || {};
+    add(top, el('p', 'verdict-sub',
+      'App v' + (cap.app_version || '?') +
+      (cov.full ? ' \u00b7 full scan' : ' \u00b7 partial scan (' + ((cov.sections || []).join(', ') || '?') + ')') +
+      (cov.queries !== null && cov.queries !== undefined ? ' \u00b7 ' + cov.queries + ' queries' : '') +
+      (cap.generated_at ? ' \u00b7 ' + cap.generated_at : '')));
+    add(wrap, top);
+
+    var pid = cap.pid_support || {};
+    var pidCard = el('div', 'card');
+    add(pidCard, el('p', 'group-title', 'Mode 01 PID support (' + (pid.total || 0) + ' advertised)'));
+    (pid.banks || []).forEach(function (b) {
+      var row = el('div', 'kv');
+      add(row, el('dt', null, b.bank + ' [' + (b.bitmap_hex || '?') + ']'),
+        el('dd', null, b.pids_hex || '-'));
+      add(pidCard, row);
+    });
+    if (!(pid.banks || []).length) { add(pidCard, el('p', 'stamp', 'Not probed in this scan.')); }
+    add(wrap, pidCard);
+
+    var m = cap.mode06 || {};
+    var mCard = el('div', 'card');
+    var answered = m.answered || [], unanswered = m.unanswered || [];
+    add(mCard, el('p', 'group-title', 'Mode 06 monitors (' + answered.length + ' answered)'));
+    answered.concat(unanswered).forEach(function (r) {
+      var row = el('div', 'kv');
+      var label = 'MID ' + (r.obdmid_hex || '?');
+      var detail = (r.name || 'unknown') +
+        (r.answered ? ' \u00b7 ' + r.tests + ' test(s)' + (r.advertised ? '' : ' \u00b7 probed, not advertised')
+          : ' \u00b7 not answered');
+      add(row, el('dt', null, label), el('dd', null, detail));
+      add(mCard, row);
+    });
+    if (!answered.length && !unanswered.length) {
+      add(mCard, el('p', 'stamp', 'The mode06 phase did not run in this scan.'));
+    }
+    add(wrap, mCard);
+
+    var modes = cap.modes || {};
+    var order = ['01', '02', '03', '05', '06', '07', '09', '0A'];
+    var modeCard = el('div', 'card');
+    add(modeCard, el('p', 'group-title', 'Mode support, as observed'));
+    order.forEach(function (k) {
+      var info = modes[k] || {};
+      var row = el('div', 'kv');
+      row.style.alignItems = 'center';
+      var dd = el('dd', null, info.note || info.state || '?');
+      dd.style.flex = '1 1 auto';
+      add(row, el('dt', null, 'Mode ' + k), dd, capModeChip(info.state));
+      add(modeCard, row);
+    });
+    add(modeCard, el('p', 'stamp', 'Readiness monitors read: ' + (cap.readiness_seen ? 'yes' : 'no') + '.'));
+    add(wrap, modeCard);
+
+    var id = cap.identity || {};
+    var std = id.obd_standard || {};
+    var idCard = el('div', 'card');
+    add(idCard, el('p', 'group-title', 'Vehicle / ECU identity'));
+    [['VIN', id.vin], ['ECU name', id.ecu_name], ['CALID', id.calid],
+     ['CVN', id.cvn], ['OBD standard', std.name]].forEach(function (pair) {
+      var row = el('div', 'kv');
+      add(row, el('dt', null, pair[0]), el('dd', null, pair[1] || 'not reported'));
+      add(idCard, row);
+    });
+    add(idCard, el('p', 'stamp', 'Only what the car reported - blanks are the ECU staying silent, not this app failing.'));
+    add(wrap, idCard);
+
+    var preTitle = el('p', 'group-title', 'Sheet text (paste into a GitHub issue as-is)');
+    add(wrap, preTitle);
+    var pre = el('pre', 'report scroll');
+    pre.textContent = S.capText ||
+      (S.capState === 'text' ? 'Fetching the paste-ready text\u2026' : 'Sheet text unavailable - the rows above still stand.');
+    add(wrap, pre);
+  }
+
+  function copyCapText() {
+    var text = S.capText || '';
+    if (!text) { toast('Sheet text is not ready yet - give it a second.', 'warn'); return; }
+    function done() { toast('Compatibility sheet copied - paste it into a GitHub issue.', 'info'); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      if (document.execCommand('copy')) { done(); }
+      else { toast('Copy failed - use Download instead.', 'warn'); }
+    } catch (err) {
+      toast('Copy failed - use Download instead.', 'warn');
+    }
+    document.body.removeChild(ta);
+  }
+
+  function compatName() {
+    var d = new Date();
+    return 'hudiy-compat-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' +
+      pad(d.getHours()) + pad(d.getMinutes()) + '.txt';
+  }
+
   /* ------------------------------------------------------------- actions */
 
   function button(label, cls, onTap, enabled) {
@@ -1149,6 +1463,7 @@
     } else if (S.screen === 'S2') {
       plan.push(button('Scan again', 'btn-primary', startScan));
       plan.push(button('Fault codes', '', function () { go('S3'); }, done));
+      plan.push(button('Deep scan', '', startDeepScan));
       plan.push(button('Report', '', function () { go('S8'); loadReport(); }));
     } else if (S.screen === 'S3') {
       plan.push(button('Health summary', '', function () { go('S2'); }));
@@ -1170,14 +1485,36 @@
       plan.push(button('Health summary', 'btn-primary', function () { go('S2'); }));
       plan.push(button('Decode VIN online', '', loadOnlineVin, !!(S.scan && S.scan.report && S.scan.report.vehicle && S.scan.report.vehicle.vin)));
     } else if (S.screen === 'S8') {
+      // Ungated on purpose: after a page reload the backend still holds the
+      // last report while S.scan is empty - both targets explain themselves.
       plan.push(button('Health summary', 'btn-primary', function () { go('S2'); }));
-      var a = el('a', 'btn', 'Download ' + S.reportFmt.toUpperCase());
+      plan.push(button('Compatibility', '', function () { go('S10'); loadCap(); }));
+      var a = el('a', 'btn ctl', 'Download ' + S.reportFmt.toUpperCase());
       a.href = '/report?format=' + encodeURIComponent(S.reportFmt);
       a.setAttribute('download', downloadName());
       a.style.textDecoration = 'none';
       a.style.display = 'inline-flex';
       a.style.alignItems = 'center';
       plan.push(a);
+    } else if (S.screen === 'S9') {
+      plan.push(button('Run deep scan', 'btn-primary', startDeepScan));
+      plan.push(button('Health summary', '', function () { go('S2'); }, done));
+      plan.push(el('span', 'grow'));
+      var src = deepSource();
+      plan.push(el('span', 'note', src.rows.length
+        ? (src.rows.filter(function (r) { return r.ok; }).length + ' of ' + src.rows.length + ' answered')
+        : 'no PID rows yet'));
+    } else if (S.screen === 'S10') {
+      plan.push(button('Copy sheet', 'btn-primary', copyCapText, !!(S.capText)));
+      var c = el('a', 'btn ctl', 'Download .txt');
+      c.href = '/capability?format=text';
+      c.setAttribute('download', compatName());
+      c.style.textDecoration = 'none';
+      c.style.display = 'inline-flex';
+      c.style.alignItems = 'center';
+      plan.push(c);
+      plan.push(el('span', 'grow'));
+      plan.push(el('span', 'note', 'paste into a GitHub issue'));
     }
 
     plan.forEach(function (n) { bar.appendChild(n); });
@@ -1691,10 +2028,14 @@
     if (pollAllowed()) { startPolling(); }
   }
 
-  function startScan() {
+  /* One in-flight scan at a time (the ELM link is single-flight). A deep
+   * scan rides the same S1 screen but its result lands in S.deep, never in
+   * S.scan - a focused re-read must not wipe the health summary. */
+  function launchScan(kind) {
     if (S.busy) { return; }
     S.busy = true;
-    S.degraded = null;
+    S.scanKind = kind;
+    if (kind !== 'deep') { S.degraded = null; }
     S.started = Date.now();
     S.elapsed = 0;
     S.scanAbort = (typeof AbortController === 'function') ? new AbortController() : null;
@@ -1707,7 +2048,15 @@
       if (S.screen === 'S1') { $('scanTimer').textContent = num(S.elapsed, 1) + 's'; }
     }, 200);
 
-    var url = '/scan' + (S.scope === 'quick' ? ('?sections=' + QUICK.join(',')) : '');
+    var url, sections;
+    if (kind === 'deep') {
+      url = '/scan?sections=' + DEEP.join(',');
+      sections = DEEP.slice();
+    } else {
+      url = '/scan' + (S.scope === 'quick' ? ('?sections=' + QUICK.join(',')) : '');
+      sections = (S.scope === 'quick') ? QUICK.slice() : null;
+    }
+    S.scanSections = sections;
     var opts = { cache: 'no-store', headers: { 'Accept': 'application/json' } };
     if (S.scanAbort) { opts.signal = S.scanAbort.signal; }
 
@@ -1727,8 +2076,19 @@
       });
   }
 
+  function startScan() {
+    launchScan(S.scope === 'quick' ? 'quick' : 'full');
+  }
+
+  function startDeepScan() {
+    launchScan('deep');
+  }
+
   function finishScan(error, res) {
+    var kind = S.scanKind || 'full';
     S.busy = false;
+    S.scanKind = null;
+    S.scanSections = null;
     if (S.tickTimer) { window.clearInterval(S.tickTimer); S.tickTimer = null; }
     S.scanAbort = null;
     restartPolling();
@@ -1740,6 +2100,12 @@
       return;
     }
     if (error || !res || !res.data) {
+      if (kind === 'deep') {
+        toast('Deep scan failed: the diagnostics lane did not answer (' + (error || 'no payload') +
+              '). The last report is untouched.', 'bad');
+        go(S.scan ? 'S2' : 'S0');
+        return;
+      }
       S.degraded = { status: 'error', reason: 'the diagnostics lane did not answer (' + (error || 'no payload') + ')' };
       toast('Scan failed: ' + S.degraded.reason, 'bad');
       go('S0');
@@ -1747,6 +2113,21 @@
     }
     var data = res.data;
     if (data.report) {
+      if (kind === 'deep') {
+        var rows = (data.report.allpids || []);
+        S.deep = { rows: rows, support: data.report.support || null,
+                   at: new Date(), duration_s: data.duration_s, sections: data.sections };
+        if (!rows.length) {
+          toast('Deep scan came back with no PID rows - discovery found no support map. The last report is untouched.', 'warn');
+          go(S.scan ? 'S2' : 'S0');
+          return;
+        }
+        var heard = rows.filter(function (r) { return r.ok; }).length;
+        toast('Deep read finished in ' + num(data.duration_s, 1) + ' s: ' +
+              heard + ' of ' + rows.length + ' PIDs answered.', 'info');
+        go('S9');
+        return;
+      }
       S.scan = data;
       S.scanAt = new Date();
       S.degraded = null;
@@ -1757,8 +2138,16 @@
       S.vinOnline = null;
       S.reportBody = null;
       S.reportState = 'idle';
+      if (kind === 'full') { S.deep = null; }  // the full report carries a fresher allpids read
       toast('Scan finished in ' + num(data.duration_s, 1) + ' s: ' + (data.summary || 'complete') + '.', 'info');
       go('S2');
+      return;
+    }
+    if (kind === 'deep') {
+      toast('Deep scan produced no data: ' +
+            ((res.data && (res.data.reason || res.data.status)) || 'the ECU did not answer') +
+            '. The last report is untouched.', 'warn');
+      go(S.scan ? 'S2' : 'S0');
       return;
     }
     S.degraded = {
