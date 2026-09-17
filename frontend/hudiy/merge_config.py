@@ -36,7 +36,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OVERLAY_FRAGMENT = os.path.join(HERE, "overlays.json")
 MENU_FRAGMENT = os.path.join(HERE, "applications_menu.json")
 
-#: Canonical empty shape of overlays.json, from Hudiy's own examples.
+#: Canonical empty shape of overlays.json (matches Hudiy's documented shape).
 OVERLAYS_SKELETON = {
     "overlays": [],
     "navigationOverlayPosition": {"x": 0, "y": 0},

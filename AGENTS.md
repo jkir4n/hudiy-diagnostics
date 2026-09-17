@@ -1,6 +1,6 @@
 # AGENTS.md — Hudiy Diagnostics
 
-**Last updated:** 2026-09-16 (installer bench-trialed end-to-end on the reference unit; app live on car)
+**Last updated:** 2026-09-17 (published; licensing/provenance note added)
 
 ## 1. What this project is
 A Hudiy **menu-launched** car diagnostics app. Backend, frontend and the wheel/knob shim are built and live on the reference head unit. Published publicly 17 Sep 2026 — github.com/jkir4n/hudiy-diagnostics, MIT (privacy gate 2026-09-14). Installer bench-trialed 2026-09-16 on the reference unit: ssh-safe, auto-reboot at the end, atomic config merge with backups.
@@ -49,3 +49,8 @@ Non-negotiable requirements (owner's verbatim constraints):
 - Every protocol claim in docs must trace to a fixture JSON or a cited source in `docs/OBD2_DIAGNOSTICS_RESEARCH.md`.
 - Any new probe: strict abort-on-first-timeout, capped loops, connection killed cleanly after.
 - Never probe OBD while assuming charts.py state — check `:44411/health` first (`hudiy_connected`, `last_obd_age_s`).
+
+## 7. Licensing & provenance
+- This project ships no Hudiy code: interop is runtime-only against the user's own Hudiy install (Api_pb2 is discovered, never bundled).
+- Hudiy's public repo (github.com/wiboma/hudiy - docs/examples) carries no license: read it for interface facts, never copy code from it.
+- Vendored third-party artifacts must carry their license next to them (see backend/third_party/dtc-database/).

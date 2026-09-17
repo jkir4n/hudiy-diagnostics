@@ -2,6 +2,8 @@
 
 Car diagnostics app for Hudiy — reads OBD data, checks for errors, runs vehicle diagnostics. Menu-launched (no autolaunch). Universal: deployable to any Hudiy instance, no vehicle- or machine-specific code.
 
+Independent companion for [Hudiy](https://hudiy.eu) — not affiliated; ships no Hudiy code; requires your own Hudiy install.
+
 ## Install (one line, no root)
 
 ```
