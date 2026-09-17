@@ -2,6 +2,13 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-17 — Published publicly (MIT)
+
+### Changed
+- **Public release**: https://github.com/jkir4n/hudiy-diagnostics — MIT license added; clone/curl one-liners now carry the real URL; `install-bootstrap.sh` piped mode defaults its clone source to the public repo.
+- Final pre-publish privacy gate: all 19 checks zero (generic + local identifier patterns), working tree AND full history; suite 97 passed / 2 skipped (real-`Api_pb2` tests skip when absent).
+- `docs/GITHUB_PUBLISH_PRIVACY_GATE.md` updated from "not published" to the published record.
+
 ## 2026-09-16 — Input: ghost-navigation fix (hidden-time knob events were replayed on open)
 
 ### Fixed
@@ -110,7 +117,7 @@ All notable changes. Format: date — phase — what.
 
 ### Added
 - `install-bootstrap.sh` (repo root): entire install now one command —
-  `git clone <repo> && cd Hudiy-Diagnostics && bash install-bootstrap.sh`.
+  `git clone https://github.com/jkir4n/hudiy-diagnostics.git && cd hudiy-diagnostics && bash install-bootstrap.sh`.
   Handles the piped `curl | bash` case (clones `DIAG_REPO_REMOTE` into a temp
   dir), then wraps `backend/deploy/install.sh`. Ends by printing the two
   manual extras (input group, Hudiy restart). Verified: in-repo dry-run and a

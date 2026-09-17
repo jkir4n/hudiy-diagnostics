@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Hudiy Diagnostics one-line bootstrap (POSIX bash, no root).
 #
-#   git clone <repo> && cd Hudiy-Diagnostics && bash install-bootstrap.sh
-#   - or, once published -
-#   bash <(curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/master/install-bootstrap.sh)
+#   git clone https://github.com/jkir4n/hudiy-diagnostics.git && cd hudiy-diagnostics && bash install-bootstrap.sh
+#   - or, without cloning -
+#   bash <(curl -fsSL https://raw.githubusercontent.com/jkir4n/hudiy-diagnostics/master/install-bootstrap.sh)
 #
 # Wraps backend/deploy/install.sh, which does the real work. Extra flags
 # (e.g. --no-reboot) are passed through.
 set -euo pipefail
 
-REMOTE="${DIAG_REPO_REMOTE:-}"   # optional: git URL to clone from
+REMOTE="${DIAG_REPO_REMOTE:-https://github.com/jkir4n/hudiy-diagnostics.git}"   # overrideable: git URL to clone from
 
 SELF="${BASH_SOURCE[0]:-}"
 if [ -n "$SELF" ]; then SELF_DIR="$(dirname "$SELF")"; else SELF_DIR="."; fi

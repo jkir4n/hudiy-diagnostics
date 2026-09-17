@@ -1,7 +1,7 @@
 # Publication privacy gate — executed 2026-09-14
 
-**Status: scrubbed & ready — NOT published.** (Standing owner directive: prepare,
-do not push.)
+**Status: scrubbed; PUBLISHED 2026-09-17 at https://github.com/jkir4n/hudiy-diagnostics (public, MIT).**
+The pre-publish "prepare, do not push" directive was lifted by the owner on 17 Sep 2026.
 
 This file was the pre-publish checklist. The 2026-09-14 pass executed it; the
 file now serves as the record plus the re-audit recipe for any future push.
@@ -37,8 +37,8 @@ into this repo.
 Consequence: **a plain `git push` of `master` is now safe.** No fresh-history
 trickery, no tag restrictions. The old `pre-scrub-2026-09-14` tag has been retired.
 
-## Still open (owner decisions at publish time)
-- License: none in-repo yet — pick one before/at publish.
-- Repo name + visibility.
-- Whether the archived `tools/` capture scripts ship as-is (reference-only; see
-  `tools/README.md`).
+## Decisions (made at publication, 17 Sep 2026)
+- License: **MIT** (added at publish).
+- Repo: **jkir4n/hudiy-diagnostics**, public.
+- `tools/` capture scripts ship as-is (reference-only; see `tools/README.md`).
+- Plain `master` push, no history tricks (as planned post-scrub).

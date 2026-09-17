@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-16 (installer bench-trialed end-to-end on the reference unit; app live on car)
 
 ## 1. What this project is
-A Hudiy **menu-launched** car diagnostics app. Backend, frontend and the wheel/knob shim are built and live on the reference head unit. Publication-ready (privacy gate executed 2026-09-14); NOT published. Installer bench-trialed 2026-09-16 on the reference unit: ssh-safe, auto-reboot at the end, atomic config merge with backups.
+A Hudiy **menu-launched** car diagnostics app. Backend, frontend and the wheel/knob shim are built and live on the reference head unit. Published publicly 17 Sep 2026 — github.com/jkir4n/hudiy-diagnostics, MIT (privacy gate 2026-09-14). Installer bench-trialed 2026-09-16 on the reference unit: ssh-safe, auto-reboot at the end, atomic config merge with backups.
 
 Non-negotiable requirements (owner's verbatim constraints):
 1. **No autolaunch.** Opened ONLY via the Hudiy settings/applications menu.
