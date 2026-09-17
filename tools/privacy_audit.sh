@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Privacy re-audit for publication readiness (docs/GITHUB_PUBLISH_PRIVACY_GATE.md).
-# Every check must report 0. Generic patterns only; exact local-only patterns are
-# read from tools/privacy-patterns.local when present (gitignored, never commit).
+# Every check must report 0. File checks: generic patterns, plus exact local-only
+# patterns read from tools/privacy-patterns.local when present (gitignored, never
+# commit). History checks: every commit identity must be the maintainer identity,
+# and a full-history sweep must show no local-pattern residuals.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -30,6 +32,17 @@ if [ -f tools/privacy-patterns.local ]; then
   done < tools/privacy-patterns.local
 else
   echo "note: tools/privacy-patterns.local not present - only generic checks ran"
+fi
+
+echo "== history checks =="
+id_bad=$(git log --all --pretty=format:'%an <%ae>%n%cn <%ce>' 2>/dev/null | sort -u | grep -cvE '^jkir4n <jkir4n@users[.]noreply[.]github[.]com>$' || true)
+printf '%-46s %s\n' "non-maintainer commit identities" "$id_bad"
+[ "$id_bad" -eq 0 ] || fail=1
+if [ -f tools/privacy-patterns.local ]; then
+  pats=$(grep -vE '^#|^$' tools/privacy-patterns.local | awk '{print $1}' | paste -sd'|' -)
+  sweep=$(git log --all -p 2>/dev/null | grep -aE "$pats" | wc -l || true)
+  printf '%-46s %s\n' "history sweep residual lines" "$sweep"
+  [ "$sweep" -eq 0 ] || fail=1
 fi
 
 echo
