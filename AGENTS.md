@@ -16,6 +16,7 @@ Non-negotiable requirements (owner's verbatim constraints):
 - Race Dash (deployed sibling): charts.py :44411 (SSE API), toggle daemon :44413, user systemd units `hudiy-obd-charts`, `race-dash-screensaver`.
 - Hudiy app lifecycle: labwc autostart only (`~/.hudiy/share/hudiy_run.sh`). `hudiy.service` is a stub (ExecCondition unmet under graphical.target) — `inactive` is NORMAL.
 - Pi: ssh `car@<PI-IP>` (Tailscale), passwordless sudo, user units, LF files, no journald — Hudiy logs `~/.hudiy/log/hudiy.N.log` (newest by mtime; rotation index grows).
+- Clock: can lag by minutes right after a boot until time sync (observed 22 Sep 2026) — minute-level forensics near a boot can mislead.
 - Menu entries: `applications_menu.json` (Race Dash pattern at line 226: Material icon, Hudiy category, action string).
 
 ## 3. HARD CONSTRAINTS (from live probing — do not re-learn the hard way)

@@ -2,6 +2,20 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-22 — Live bench trial: install → uninstall → reboot → reinstall (reference unit)
+
+### Verified (on-car, live)
+- **Install as an update**: tree synced byte-identical to repo HEAD (md5 spot-checks on page/backend/shim), both units restarted onto the copied code, overlay + menu entries `already present` (no rewrite), health OK right after.
+- **Full uninstall** (`uninstall-bootstrap.sh --no-reboot`): overlay `diag` + item `diag_show` removed with timestamped backups; every other entry preserved exactly (23/24 menu items, 1/2 overlays, other files byte-identical); both units stopped and removed; copied tree + env gone; no `.tmp` residue. **Second run**: clean no-op ("already absent", nothing written), exit 0.
+- **Removal survives a cold boot**: units stay gone; config still has no `diag`/`diag_show` — the menu comes up without the entry.
+- **Reinstall, default flow (auto-reboot)**: fresh entries created — **exactly one** overlay + **one** menu item (duplicate check 1+1); units active+enabled after the boot; health OK; a pre-seeded `env` (bridge mode) was **preserved** (the installer only creates it when missing, as documented).
+- Config backups grew by 2 per merge (4 across the cycle), all left in place; `input` group, race-dash, logs, reboot daemon untouched throughout.
+
+### Notes
+- The piped one-liner's clone leg could not be exercised on this network during the trial (the unit's IPv4 path was down; `github.com` is IPv4-only while `raw`/IPv6 worked). Ran the local-clone path instead (`bash install-bootstrap.sh` from a checkout) — same installer, same assertions.
+- This unit's clock can lag by minutes right after a boot until time sync — minute-level timestamps near a boot can be off (observed during this trial).
+- Live OBD data checks (scan content, `/capability` sheet content) still want an engine-on session. Behavior checks done: a fresh-process `/capability` performs its first scan by design, and a concurrent scan correctly answers `409 busy`.
+
 ## 2026-09-17 — Uninstall: full edge-case-hardened removal (Phase 3c)
 
 ### Added
