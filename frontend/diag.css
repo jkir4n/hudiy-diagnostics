@@ -24,6 +24,14 @@
  *   - Buttons and chips are capsule/pill shapes; selected = full accent fill.
  *   - Bottom row styled like Hudiy's persistent system bar: flat, chip-like.
  * Source: docs/HUDIY_UI_LANGUAGE.md targets A-H, docs/M3_UI_RESEARCH.md.
+ *
+ * M3 fidelity pass (branch m3-fidelity): type roles (--md-sys-typescale-*,
+ * 15/15, values per docs/M3_UI_RESEARCH.md §2.2), shape + spacing tokens,
+ * connected segmented tabs, 3px focus ring on host primary, snackbar toast
+ * (inverse pair + the single allowed shadow). Tone-only elevation everywhere
+ * else. Compact-density deviation (documented, per §5 gap #4): chrome 56px /
+ * actions 68px / rows 50px min are KEPT — M3 canonical 64/80/72dp does not
+ * fit a 480px-tall kiosk; tone, not size, carries hierarchy.
  */
 
 :root {
@@ -42,7 +50,8 @@
   --m3-surface-container-highest: #262E33;
   --m3-surface-variant: #262E33;
   --m3-on-surface-variant: #9AA6AC;
-  --m3-outline: #6C787E;
+  --m3-outline: #8A969C;   /* lightened so ghost text passes 4.5:1 on every
+                                  dark surface (audit); host outline wins when bridged */
   --m3-outline-variant: #262E33;
   --m3-inverse-surface: #F1F5F7;
   --m3-inverse-on-surface: #0E1113;
@@ -80,6 +89,59 @@
   --m3-on-tertiary-fixed: #00201A;
   --m3-on-tertiary-fixed-variant: #004A36;
 
+  /* ---- M3 shape tokens (docs/M3_UI_RESEARCH.md §4.4) ------------------ */
+  --md-sys-shape-corner-extra-small: 4px;    /* badges (.tag), toast */
+  --md-sys-shape-corner-small: 8px;          /* reserved */
+  --md-sys-shape-corner-medium: 12px;        /* cards, hero, tiles, rows, report */
+  --md-sys-shape-corner-large: 16px;         /* reserved */
+  --md-sys-shape-corner-extra-large: 28px;   /* future dialogs */
+  --md-sys-shape-corner-full: 999px;         /* buttons, pills, tabs (outer), chips */
+
+  /* ---- M3 spacing tokens (4dp rhythm, §2.3) ---------------------------- */
+  --md-sys-spacing-1: 4px;
+  --md-sys-spacing-2: 8px;
+  --md-sys-spacing-3: 12px;
+  --md-sys-spacing-4: 16px;
+  --md-sys-spacing-5: 24px;
+
+  /* ---- M3 typescale tokens (values per §2.2 token table, verbatim) ----- */
+  /* Font stack: Roboto first, system fallbacks after (gap #6 — Roboto is
+   * NOT assumed present on the Pi; DejaVu Sans carries the kiosk). */
+  --md-sys-typescale-display-large: 400 57px/64px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-display-medium: 400 45px/52px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-display-small: 400 36px/44px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-headline-large: 400 32px/40px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-headline-medium: 400 28px/36px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-headline-small: 400 24px/32px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-title-large: 400 22px/28px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-title-medium: 500 16px/24px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-title-small: 500 14px/20px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-body-large: 400 16px/24px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-body-medium: 400 14px/20px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-body-small: 400 12px/16px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-label-large: 500 14px/20px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-label-medium: 500 12px/16px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+  --md-sys-typescale-label-small: 500 11px/16px "Roboto", system-ui, "DejaVu Sans", sans-serif;
+
+  /* Usage -> role map (before => after where the kiosk size moves to the
+   * nearest role; deltas are <=2px unless noted):
+   *   body => body-large (15px => 16px) | .titles h1 => title-large (20/600 => 22/400)
+   *   .titles p, .hint, .tile-label, .scan-note, .verdict-rule => body-small (12px)
+   *   .empty, .hero-note, .verdict-sub, .detail p, .kv, .toast, .row-text => body-medium (13/14px => 14px)
+   *   .scan-label, .row-code, .row-value => title-medium (18/600, 16/600 => 16/500)
+   *   .tile-value.small => title-large (22px, 600 => 400)
+   *   .verdict-headline => headline-small (24px, 600 => 400)
+   *   .hero-state => headline-large (30/600 => 32/400)
+   *   .count b, .tile-value, .scan-timer, .icon-btn glyph => headline-medium (26-28/600 => 28/400)
+   *   .detail-code => display-small (34/700 => 36/400)
+   *   .tab, .btn => label-large (13/600, 15/600 => 14/500)
+   *   .pill, .state-chip, .chip, .steps li, .settings, .hero-kicker, .row-group, .group-title => label-medium (12px, 400/600 => 500)
+   *   .stamp, .tag, .count span, .tile-sub, .tile-corner, .row-unit, .scan-cap, .detail h3, .actions .note => label-small (10/11px => 11px, 400/600 => 500)
+   *   .report => body-small + var(--mono) family override (monospace data is an M3-supported discriminating style, §2.2)
+   * Note: 500 renders as 400 where no Medium face exists (DejaVu Sans on the
+   * Pi) and as true medium where Roboto is present — emphasis softens on the
+   * kiosk, weight is exact on Roboto systems. */
+
   /* ---- severity + surface tokens consumed by every rule below ---------- */
   --ok: var(--m3-tertiary);
   --warn: var(--m3-tertiary-container);
@@ -104,10 +166,13 @@
   --bad-line: rgba(213, 94, 0, .55);
   --bad-bg: rgba(213, 94, 0, .13);
 
-  --focus: var(--info);
-  --focus-edge: 3px;   /* M3 focus indicator: 3dp outline, 2dp offset */
-  --radius: 20px;      /* Hudiy: generous card radius */
-  --radius-pill: 999px;
+  --focus: var(--m3-primary);  /* M3 focus layer = host primary. Fallback if a
+                                   custom colorOverwrite primary ever runs
+                                   low-contrast: --m3-outline. */
+  --focus-edge: 3px;   /* M3 focus indicator: 3dp outline, 2dp offset (§3.1) */
+  /* Compat aliases: every rule below uses the md-sys shape tokens directly. */
+  --radius: var(--md-sys-shape-corner-medium);
+  --radius-pill: var(--md-sys-shape-corner-full);
   --chrome-h: 56px;
   --actions-h: 68px;
   --mono: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", Menlo, monospace;
@@ -126,13 +191,18 @@ html, body {
 body {
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.35 system-ui, "DejaVu Sans", Roboto, sans-serif;
+  font: var(--md-sys-typescale-body-large);
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-body.scheme-light {
+/* Light-mode hook. Load-bearing selector is :root.scheme-light: the --ok/
+ * --bg-style aliases are DEFINED on :root, so their var() references resolve
+ * against the html element and inherit down. A body-level rule alone would
+ * strand every alias on its dark value (mixed scheme). applyScheme() toggles
+ * the class on both elements, so body.scheme-light rides along for compat. */
+:root.scheme-light, body.scheme-light {
   /* Light-mode hook: --m3-* values carry the light scheme. These literals only
    * serve the no-bridge case (browser testing), per Hudiy light themes:
    * warm cream background, darker cream cards, dark-caramel accents-ink. */
@@ -147,9 +217,18 @@ body.scheme-light {
   --m3-surface-container-highest: #E2D4C2;
   --m3-surface-dim: #E7DACB;
   --m3-surface-variant: #E2D4C2;
-  --m3-outline: #7A6A5A;
+  --m3-outline: #6B5C4C;   /* darkened so ghost text passes 4.5:1 on cream
+                                  cards (audit) */
   --m3-outline-variant: #DCCDBA;
   --m3-on-surface-variant: #6B5B4B;
+  --m3-primary: #0B5C86;         /* darkened: sky #56B4E9 is ~2:1 on cream (audit) */
+  --m3-on-primary: #FFFFFF;      /* pairs with the darkened light primary */
+  --m3-tertiary: #006A4E;        /* darkened green: text-grade on cream (audit) */
+  --m3-on-tertiary: #FFFFFF;     /* pairs with the darkened light tertiary */
+  /* M3 has no warn slot: warn rides tertiary-container (amber). The amber
+   * hue fails as *text* on cream, so the text alias alone is re-pointed at
+   * a dark amber; container fills (tag/chips/toast/state) keep the amber. */
+  --warn: #6B4A00;
   --m3-inverse-surface: #2B2119;
   --m3-inverse-on-surface: #FAF3EA;
   --m3-primary-container: #CFE9FA;
@@ -178,27 +257,27 @@ body.scheme-light {
   height: 44px;
   flex: 0 0 44px;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--md-sys-shape-corner-full);
   background: transparent;
   color: var(--dim);
-  font: 26px/1 system-ui, sans-serif;
+  font: var(--md-sys-typescale-headline-medium);   /* icon glyph: 26px/1 -> 28/36, still centred in the 44px target */
   cursor: pointer;
 }
 .icon-btn[hidden] { visibility: hidden; display: block; }
 .icon-btn:disabled { opacity: .3; }
 
 .titles { flex: 1 1 auto; min-width: 0; }
-.titles h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: .01em; }
-.titles p { margin: 1px 0 0; font-size: 12px; color: var(--quiet); }
+.titles h1 { margin: 0; font: var(--md-sys-typescale-title-large); letter-spacing: .01em; }
+.titles p { margin: 1px 0 0; font: var(--md-sys-typescale-body-small); color: var(--quiet); }
 
 /* state = dot + word on a flat tinted capsule (no borders, no stripes) */
 .tag {
-  font: 600 10px/1 system-ui, sans-serif;
+  font: var(--md-sys-typescale-label-small);
   letter-spacing: .09em;
   text-transform: uppercase;
-  color: var(--warn);
-  background: var(--warn-bg);
-  border-radius: var(--radius-pill);
+  color: var(--m3-on-tertiary-container);
+  background: var(--m3-tertiary-container);
+  border-radius: var(--md-sys-shape-corner-extra-small);
   padding: 5px 10px;
 }
 
@@ -208,8 +287,8 @@ body.scheme-light {
   gap: 6px;
   max-width: 240px;
   padding: 7px 12px;
-  border-radius: var(--radius-pill);
-  font-size: 12px;
+  border-radius: var(--md-sys-shape-corner-full);
+  font: var(--md-sys-typescale-label-medium);
   color: var(--dim);
   background: var(--panel-2);
   white-space: nowrap;
@@ -235,27 +314,26 @@ body.scheme-light {
 #main { position: relative; overflow: hidden; }
 
 .screen { display: none; height: 100%; padding: 12px 14px 6px; }
-.screen.active { display: flex; flex-direction: column; gap: 12px; }
+.screen.active { display: flex; flex-direction: column; gap: var(--md-sys-spacing-3); }
 
 .scroll { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .scroll::-webkit-scrollbar { width: 0; height: 0; }
 
-.hint { margin: 2px 4px 0; font-size: 12px; color: var(--quiet); line-height: 1.45; }
+.hint { margin: 2px 4px 0; font: var(--md-sys-typescale-body-small); color: var(--quiet); }
 
 .empty {
   margin: 18px 4px;
-  font-size: 14px;
+  font: var(--md-sys-typescale-body-medium);
   color: var(--dim);
-  line-height: 1.5;
 }
 
-.stamp { margin: 0 4px; font-size: 11px; color: var(--quiet); }
+.stamp { margin: 0 4px; font: var(--md-sys-typescale-label-small); color: var(--quiet); }
 
 /* ---------------------------------------------------------------- hero */
 
 /* Hudiy hero: a big charcoal tile. State = coloured dot beside the value. */
 .hero {
-  border-radius: var(--radius);
+  border-radius: var(--md-sys-shape-corner-medium);
   background: var(--panel);
   padding: 16px 18px;
 }
@@ -265,7 +343,7 @@ body.scheme-light {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font: var(--md-sys-typescale-label-medium);
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--quiet);
@@ -283,21 +361,21 @@ body.scheme-light {
 .hero[data-state="offline"] .hero-kicker::before,
 .hero[data-state="unavailable"] .hero-kicker::before { background: var(--bad); }
 
-.hero-state { margin: 6px 0 2px; font-size: 30px; font-weight: 600; }
-.hero-note { margin: 0; font-size: 13px; color: var(--dim); }
+.hero-state { margin: 6px 0 2px; font: var(--md-sys-typescale-headline-large); }
+.hero-note { margin: 0; font: var(--md-sys-typescale-body-medium); color: var(--dim); }
 
 /* ---------------------------------------------------------------- verdict */
 
 /* Flat fill-only card, no border of any kind. */
 .card {
-  border-radius: var(--radius);
+  border-radius: var(--md-sys-shape-corner-medium);
   background: var(--panel);
   padding: 14px 16px;
 }
 
 /* State carried by a coloured dot on the kicker row + value colour. */
 .verdict-head { display: flex; align-items: baseline; gap: 10px; }
-.verdict-headline { margin: 0; font-size: 24px; font-weight: 600; flex: 1 1 auto; }
+.verdict-headline { margin: 0; font: var(--md-sys-typescale-headline-small); flex: 1 1 auto; }
 .verdict[data-sev] .verdict-headline::before {
   content: "";
   display: inline-block;
@@ -311,13 +389,13 @@ body.scheme-light {
 .verdict[data-sev="warn"] .verdict-headline::before { background: var(--warn); }
 .verdict[data-sev="bad"] .verdict-headline::before { background: var(--bad); }
 
-.verdict-sub { margin: 6px 0 0; font-size: 13px; color: var(--dim); line-height: 1.45; }
-.verdict-rule { margin: 8px 0 0; font-size: 12px; color: var(--quiet); }
+.verdict-sub { margin: 6px 0 0; font: var(--md-sys-typescale-body-medium); color: var(--dim); }
+.verdict-rule { margin: 8px 0 0; font: var(--md-sys-typescale-body-small); color: var(--quiet); }
 
 .counts { display: flex; gap: 22px; margin-top: 12px; }
 .count { display: flex; flex-direction: column; gap: 2px; }
-.count b { font: 600 26px/1 system-ui, sans-serif; }
-.count span { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--quiet); }
+.count b { font: var(--md-sys-typescale-headline-medium); }
+.count span { font: var(--md-sys-typescale-label-small); letter-spacing: .05em; text-transform: uppercase; color: var(--quiet); }
 .count[data-tone="bad"] b { color: var(--bad); }
 .count[data-tone="warn"] b { color: var(--warn); }
 .count[data-tone="ok"] b { color: var(--ok); }
@@ -331,22 +409,23 @@ body.scheme-light {
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  border-radius: var(--radius-pill);
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: var(--md-sys-shape-corner-full);
+  font: var(--md-sys-typescale-label-medium);
   color: var(--dim);
   background: var(--panel-2);
   white-space: nowrap;
 }
-.chip-sev-ok { color: var(--ok); background: var(--ok-bg); }
-.chip-sev-warn { color: var(--warn); background: var(--warn-bg); }
-.chip-sev-bad { color: var(--bad); background: var(--bad-bg); }
-.chip-sev-info { color: var(--info); background: var(--ok-bg); }
+/* Severity chips use the container/on-container pairs (contrast audit,
+ * tools/contrast_audit.py) — hue-on-own-tint text fails WCAG normal-text. */
+.chip-sev-ok { color: var(--m3-on-tertiary); background: var(--m3-tertiary); }
+.chip-sev-warn { color: var(--m3-on-tertiary-container); background: var(--m3-tertiary-container); }
+.chip-sev-bad { color: var(--m3-on-error-container); background: var(--m3-error-container); }
+.chip-sev-info { color: var(--m3-on-primary-container); background: var(--m3-primary-container); }
 .chip-sev-quiet { color: var(--quiet); background: var(--panel-2); }
 
 /* ---------------------------------------------------------------- tiles */
 
-.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--md-sys-spacing-3); }
 
 /* Metric tile: small gray label, BIG value, tiny muted sub. Hub tile values
  * read like Hudiy dashboard channels - accent-coloured numerics. */
@@ -357,7 +436,7 @@ body.scheme-light {
   gap: 3px;
   text-align: left;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--md-sys-shape-corner-medium);
   background: var(--panel-2);
   color: var(--ink);
   padding: 12px 14px;
@@ -365,40 +444,48 @@ body.scheme-light {
   cursor: pointer;
 }
 .tile[disabled] { opacity: .45; }
-.tile-label { font-size: 12px; color: var(--quiet); }
-.tile-value { font: 600 28px/1.05 system-ui, sans-serif; color: var(--info); }
-.tile-value.small { font-size: 22px; }
-.tile-sub { font-size: 11px; color: var(--quiet); }
+.tile-label { font: var(--md-sys-typescale-body-small); color: var(--quiet); }
+.tile-value { font: var(--md-sys-typescale-headline-medium); color: var(--info); }
+.tile-value.small { font: var(--md-sys-typescale-title-large); }
+.tile-sub { font: var(--md-sys-typescale-label-small); color: var(--quiet); }
 .tile-corner {
   position: absolute;
   top: 12px; right: 14px;
-  font-size: 11px;
+  font: var(--md-sys-typescale-label-small);
   color: var(--quiet);
 }
 
 /* ---------------------------------------------------------------- tabs */
 
-.tabs { display: flex; gap: 8px; flex: 0 0 auto; }
+/* M3 segmented buttons: connected strip, shared 1px outline-variant divider,
+ * outer radius full, selected segment = secondary-container fill. */
+.tabs { display: flex; gap: 0; flex: 0 0 auto; }
 
-/* Capsule/pill tabs: transparent surface; selected = full accent fill. */
 .tab {
-  border: 0;
-  background: var(--panel-2);
+  position: relative;
+  border: 1px solid var(--m3-outline-variant);
+  background: var(--m3-surface);
   color: var(--dim);
-  border-radius: var(--radius-pill);
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 0;
+  margin-left: -1px;
+  padding: var(--md-sys-spacing-2) var(--md-sys-spacing-4);
+  font: var(--md-sys-typescale-label-large);
   cursor: pointer;
   min-height: 38px;
 }
-.tab[aria-selected="true"] { color: var(--on-accent, var(--m3-on-primary)); background: var(--info); }
+.tab:first-child { border-radius: var(--md-sys-shape-corner-full) 0 0 var(--md-sys-shape-corner-full); margin-left: 0; }
+.tab:last-child { border-radius: 0 var(--md-sys-shape-corner-full) var(--md-sys-shape-corner-full) 0; }
+.tab[aria-selected="true"] {
+  color: var(--m3-on-secondary-container);
+  background: var(--m3-secondary-container);
+  border-color: var(--m3-secondary-container);
+}
 .tab .n { color: inherit; opacity: .75; }
 
 /* ---------------------------------------------------------------- rows */
 
 .rows { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; }
-.rows li + li { margin-top: 8px; }
+.rows li + li { margin-top: var(--md-sys-spacing-2); }
 
 .row {
   display: flex;
@@ -409,23 +496,23 @@ body.scheme-light {
   text-align: left;
   padding: 10px 14px;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--md-sys-shape-corner-medium);
   background: var(--panel);
   color: var(--ink);
   cursor: pointer;
 }
 .row.flat { cursor: default; background: var(--panel-deep); }
-.row-code { font: 600 18px/1 system-ui, sans-serif; flex: 0 0 auto; color: var(--info); }
+.row-code { font: var(--md-sys-typescale-title-medium); flex: 0 0 auto; color: var(--info); }
 .row-main { flex: 1 1 auto; min-width: 0; }
-.row-text { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-sub { font-size: 12px; color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-value { font: 600 18px/1 system-ui, sans-serif; flex: 0 0 auto; text-align: right; }
-.row-unit { font-size: 11px; color: var(--quiet); margin-left: 3px; }
-.row-group { font-size: 12px; color: var(--quiet); text-transform: uppercase; letter-spacing: .06em; margin: 10px 4px 2px; }
+.row-text { font: var(--md-sys-typescale-body-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-sub { font: var(--md-sys-typescale-body-small); color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-value { font: var(--md-sys-typescale-title-medium); flex: 0 0 auto; text-align: right; }
+.row-unit { font: var(--md-sys-typescale-label-small); color: var(--quiet); margin-left: 3px; }
+.row-group { font: var(--md-sys-typescale-label-medium); color: var(--quiet); text-transform: uppercase; letter-spacing: .06em; margin: 10px 4px 2px; }
 
 .group-title {
   margin: 4px 4px 6px;
-  font-size: 12px;
+  font: var(--md-sys-typescale-label-medium);
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--quiet);
@@ -433,19 +520,19 @@ body.scheme-light {
 
 /* ---------------------------------------------------------------- detail */
 
-.detail-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.detail-code { font: 700 34px/1 system-ui, sans-serif; letter-spacing: .01em; color: var(--info); }
-.detail-block + .detail-block { margin-top: 12px; }
+.detail-head { display: flex; align-items: center; gap: var(--md-sys-spacing-3); margin-bottom: 8px; }
+.detail-code { font: var(--md-sys-typescale-display-small); letter-spacing: .01em; color: var(--info); }
+.detail-block + .detail-block { margin-top: var(--md-sys-spacing-3); }
 .detail-block h3 {
   margin: 0 0 4px;
-  font-size: 11px;
+  font: var(--md-sys-typescale-label-small);
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--quiet);
 }
-.detail-block p { margin: 0; font-size: 14px; line-height: 1.45; }
+.detail-block p { margin: 0; font: var(--md-sys-typescale-body-medium); }
 .detail-block p + p { margin-top: 4px; }
-.kv { display: flex; gap: 10px; font-size: 13px; padding: 5px 0; }
+.kv { display: flex; gap: 10px; font: var(--md-sys-typescale-body-medium); padding: 5px 0; }
 .kv dt { flex: 0 0 132px; color: var(--quiet); margin: 0; }
 .kv dd { margin: 0; color: var(--ink); word-break: break-all; }
 
@@ -453,8 +540,8 @@ body.scheme-light {
 
 .card-scan { display: flex; flex-direction: column; gap: 14px; }
 .scan-top { display: flex; align-items: baseline; justify-content: space-between; }
-.scan-label { margin: 0; font-size: 16px; font-weight: 600; }
-.scan-timer { margin: 0; font: 600 28px/1 system-ui, sans-serif; color: var(--info); }
+.scan-label { margin: 0; font: var(--md-sys-typescale-title-medium); }
+.scan-timer { margin: 0; font: var(--md-sys-typescale-headline-medium); color: var(--info); }
 .track { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
 .track-fill {
   height: 100%;
@@ -469,23 +556,23 @@ body.scheme-light {
 }
 body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
 
-.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--md-sys-spacing-2); }
 .steps li {
-  font-size: 12px;
+  font: var(--md-sys-typescale-label-medium);
   color: var(--quiet);
   background: var(--panel-2);
-  border-radius: var(--radius-pill);
+  border-radius: var(--md-sys-shape-corner-full);
   padding: 5px 12px;
 }
-.steps li[data-done="1"] { color: var(--ok); background: var(--ok-bg); }
+.steps li[data-done="1"] { color: var(--m3-on-primary-container); background: var(--m3-primary-container); }
 .scan-cap {
   margin: 0;
-  font-size: 11px;
+  font: var(--md-sys-typescale-label-small);
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--quiet);
 }
-.scan-note { margin: 0; font-size: 12px; color: var(--quiet); line-height: 1.5; }
+.scan-note { margin: 0; font: var(--md-sys-typescale-body-small); color: var(--quiet); }
 
 /* ---------------------------------------------------------------- report */
 
@@ -494,14 +581,15 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
   margin: 0;
   padding: 12px 14px;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--md-sys-shape-corner-medium);
   background: var(--panel-deep);
   color: var(--ink);
-  font: 12px/1.45 var(--mono);
+  font: var(--md-sys-typescale-body-small);
+  font-family: var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
-.settings { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; color: var(--dim); }
+.settings { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font: var(--md-sys-typescale-label-medium); color: var(--dim); }
 .settings .seg { display: flex; gap: 6px; align-items: center; }
 .settings .seg span { color: var(--quiet); }
 
@@ -516,16 +604,16 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
   background: var(--bg);
 }
 .actions .grow { flex: 1 1 auto; }
-.actions .note { font-size: 11px; color: var(--quiet); }
+.actions .note { font: var(--md-sys-typescale-label-small); color: var(--quiet); }
 
 .btn {
   min-height: 48px;
   padding: 0 20px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--md-sys-shape-corner-full);
   border: 0;
   background: var(--panel-2);
   color: var(--ink);
-  font: 600 15px/1 system-ui, sans-serif;
+  font: var(--md-sys-typescale-label-large);
   cursor: pointer;
 }
 .btn[disabled] { opacity: .4; cursor: default; }
@@ -545,6 +633,10 @@ body:not(.kb) .ctl:focus { outline: none; }
 
 /* ---------------------------------------------------------------- toast */
 
+/* M3 snackbar: inverse-surface bg, inverse-on-surface text, extra-small
+ * radius. Severity variants use the container/on-container pairs. The
+ * box-shadow below (elevation level-3 feel) is the single shadow in this
+ * file — every other surface carries elevation by tone only. */
 .toast {
   position: fixed;
   left: 50%;
@@ -552,14 +644,15 @@ body:not(.kb) .ctl:focus { outline: none; }
   transform: translateX(-50%);
   max-width: 620px;
   padding: 10px 16px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--md-sys-shape-corner-extra-small);
   border: 0;
-  background: var(--m3-surface-container-highest);
-  color: var(--ink);
-  font-size: 13px;
+  background: var(--m3-inverse-surface);
+  color: var(--m3-inverse-on-surface);
+  font: var(--md-sys-typescale-body-medium);
+  box-shadow: 0 4px 8px 3px rgba(0, 0, 0, .15), 0 1px 3px rgba(0, 0, 0, .3);
 }
-.toast[data-sev="bad"] { color: var(--bad); background: var(--bad-bg); }
-.toast[data-sev="warn"] { color: var(--warn); background: var(--warn-bg); }
+.toast[data-sev="bad"] { color: var(--m3-on-error-container); background: var(--m3-error-container); }
+.toast[data-sev="warn"] { color: var(--m3-on-tertiary-container); background: var(--m3-tertiary-container); }
 
 /* ----------------------------------------------------------------- statebar */
 
@@ -568,8 +661,8 @@ body:not(.kb) .ctl:focus { outline: none; }
 .statebar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 16px;
+  gap: var(--md-sys-spacing-2);
+  padding: 0 var(--md-sys-spacing-4);
   background: var(--bg);
 }
 .state-chip {
@@ -578,9 +671,9 @@ body:not(.kb) .ctl:focus { outline: none; }
   gap: 6px;
   max-width: 240px;
   padding: 5px 12px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--md-sys-shape-corner-full);
   background: var(--panel-2);
-  font-size: 12px;
+  font: var(--md-sys-typescale-label-medium);
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -593,14 +686,14 @@ body:not(.kb) .ctl:focus { outline: none; }
   background: var(--quiet);
   flex: 0 0 8px;
 }
-.state-chip[data-sev="ok"] { color: var(--ok); background: var(--ok-bg); }
-.state-chip[data-sev="ok"] i { background: var(--ok); color: inherit; }
-.state-chip[data-sev="warn"] { color: var(--warn); background: var(--warn-bg); }
-.state-chip[data-sev="warn"] i { background: var(--warn); color: inherit; }
-.state-chip[data-sev="bad"] { color: var(--bad); background: var(--bad-bg); }
-.state-chip[data-sev="bad"] i { background: var(--bad); color: inherit; }
-.state-chip[data-sev="info"] { color: var(--info); background: var(--ok-bg); }
-.state-chip[data-sev="info"] i { background: var(--info); color: inherit; }
+.state-chip[data-sev="ok"] { color: var(--m3-on-tertiary); background: var(--m3-tertiary); }
+.state-chip[data-sev="ok"] i { background: currentColor; }
+.state-chip[data-sev="warn"] { color: var(--m3-on-tertiary-container); background: var(--m3-tertiary-container); }
+.state-chip[data-sev="warn"] i { background: currentColor; }
+.state-chip[data-sev="bad"] { color: var(--m3-on-error-container); background: var(--m3-error-container); }
+.state-chip[data-sev="bad"] i { background: currentColor; }
+.state-chip[data-sev="info"] { color: var(--m3-on-primary-container); background: var(--m3-primary-container); }
+.state-chip[data-sev="info"] i { background: currentColor; }
 .statebar .grow { flex: 1 1 auto; }
 
 /* ----------------------------------------------------------------- exit */

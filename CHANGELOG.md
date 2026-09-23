@@ -2,6 +2,25 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-24 — M3 fidelity pass (frontend, branch `m3-fidelity`)
+
+### Added
+- `frontend/diag.css`: all 15 `--md-sys-typescale-*` roles (values verbatim per `docs/M3_UI_RESEARCH.md` §2.2, Roboto-first stack with system fallbacks), shape tokens (extra-small 4 / small 8 / medium 12 / large 16 / extra-large 28 / full) and 4dp spacing tokens (4/8/12/16/24). Every rule rewired to a named role; usage→role map lives in a CSS comment block.
+- Connected segmented tabs (adjacent gap 0, shared 1px outline-variant divider, outer full radius, selected segment secondary-container bg + on-secondary-container text), 3px/2px-offset focus ring on host primary (host outline documented as fallback), snackbar toast (inverse-surface bg + inverse-on-surface text, 4px radius, the single level-3 shadow in the file), tone-only elevation everywhere else.
+- `tools/contrast_audit.py` (stdlib only): WCAG audit of every fg/bg pair the CSS produces under the dark fallback, the light scheme, and the no-host Okabe-Ito hues — exits 0, all pass.
+
+### Fixed
+- `scheme-light` cascade bug (found by the smoke probes): the light block listened on `body.scheme-light` only, but the `--bg`/`--ink`-style aliases are defined on `:root`, so they kept their dark-resolved values and the page rendered mixed (cream tab fills, dark text bindings). The block is now `:root.scheme-light, body.scheme-light`; `diag.js` already toggles both classes, so no JS change.
+- Audit-driven color fixes, all via the doc-prescribed container/on-container pairs: severity chips, Replay tag, scan-step done state and statebar chips moved off hue-on-own-tint text (which failed 4.5:1) onto tertiary/error/primary container pairs; dark ghost-text outline lightened (`#8A969C`); light-scheme primary/tertiary darkened for text grade (`#0B5C86`/`#006A4E` + white on-colors); light warn-text alias re-pointed at dark amber (`#6B4A00`, containers keep the amber).
+
+### Notes
+- Nearest-role type mapping moves a few kiosk sizes ≤2px (title 20→22, hero 30→32, codes 18→16, buttons 15→14) and M3 weights (600→500/400; 500 renders as 400 where no Medium face exists, e.g. DejaVu Sans on the Pi). Compact-density heights kept as the documented deviation (chrome 56px / actions 68px / rows 50px min). `diag.js` untouched.
+
+### Verified
+- `python3 tools/contrast_audit.py` exits 0 (32 dark + 32 light + 8 fallback pairs, all pass).
+- Zero hardcoded px `font-size`/`font-weight`/`line-height` outside the `:root` typescale block; no `border-left` stripes; exactly one `box-shadow` (toast).
+- Headless smoke (Playwright, 800x480, no-host fallback): zero console errors; computed-style probes confirm segmented geometry, 3px ring, and full light-scheme resolution; dark + light screenshots attached to the task.
+
 ## 2026-09-22 — Live bench trial: install → uninstall → reboot → reinstall (reference unit)
 
 ### Verified (on-car, live)
