@@ -1,6 +1,8 @@
 # Material 3 Research for the Hudiy Diagnostics Webview
 
-**Status:** IMPLEMENTED 2026-09-14 — colour-token layer (61 bridge tokens,
+**Status:** IN PROGRESS — M3 fidelity pass on branch `m3-fidelity`
+(typescale + shape tokens, segmented tabs, focus ring, snackbar toast,
+contrast audit). Colour-token layer SHIPPED 2026-09-14 (61 bridge tokens,
 Okabe-Ito fallback scheme, scheme-light toggle, warn = tertiaryContainer).
 Parked/deferred parts (see §5): component-geometry rework, typography scale
 tokens, elevation tokens.
