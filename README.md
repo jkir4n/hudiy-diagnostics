@@ -50,7 +50,10 @@ section 5); permanent Mode 0A codes are never clearable by any tool. A confirmed
 clear answers the seam contract (`mode04_positive`, `codes_seen_before`, `followup`,
 `permanent_codes_note`), a silent/refusing ECU gets a structured
 `unsupported`/`refused` answer, and a timeout is a 502 saying the codes were NOT
-confirmed cleared.
+confirmed cleared. Overlay side shipped and gated: the Fault codes screen (S3)
+carries a `Clear fault codes` entry (enabled only while the lane is online)
+opening the S11 two-screen confirm (consequence list + fix-first checkbox,
+then result + readiness follow-up with automatic wall re-read).
 
 ## The vehicle (this capture only — the APP must discover these at runtime)
 - VIN `WVWZZZ1KZAW555555` (synthetic placeholder — the capture was anonymised), ECM "ECM-EngineControl", diesel monitor map.

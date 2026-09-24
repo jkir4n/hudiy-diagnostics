@@ -2,6 +2,39 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-24 — Two-screen DTC-clear confirm flow (frontend, branch `fe-clear-dtc`)
+
+### Added
+- `frontend/diag.html` + `frontend/diag.js`: S11 `Clear fault codes` screen (survey
+  section 5 two-screen pattern). Screen 1: consequence list (codes + freeze frame +
+  test results erased, readiness all Not ready with the 60-to-90-minute diesel drive
+  cycle, re-learn roughness, codes return if unfixed), permanent-code honesty line,
+  the exact codes named (`This reset erases: …`), and the fix-first checkbox gating
+  a danger-styled `Clear now`. Screen 2: spinner→check result, server
+  `followup.message` + `afterClear`/`driveCycle` copy, and an automatic readiness
+  re-read merged into the cached report. Entry button on S3, enabled only while the
+  lane is online; `POST /clear?confirm=yes` (query form, like the other lane args),
+  30 s timeout, single-flight; 409 contention is toast-only, everything else shakes
+  the confirm card with the server message.
+- `frontend/diag.css`: `.btn-danger` (+ hollow gated state that still passes 4.5:1),
+  `.clear-list`, `.check-row`; S11 reuses the motion-section classes via
+  `markClearDone`/`syncClearMotion` twins — no new keyframes.
+- `tools/contrast_audit.py`: 3 rows for the new surfaces (exit 0, both schemes).
+- `smoke/`: Playwright smoke (800x480, keyboard only) with replay fixtures —
+  happy path drives the REAL `/clear`, error paths mocked.
+- `go()` now dismisses a lingering toast on screen change (a stale `Scan finished`
+  snackbar covered the S11 consent row).
+
+### Verified
+- `python3 smoke/clear_smoke.py`: 46/46 (screen 1 content + gating, shim reachability
+  incl. label-row toggle, live pre-read count/duration/followup/server permanent note,
+  auto re-read line, wall opens post-clear, mocked 400/409/502 + slow timeout +
+  offline gate, zero app console errors). Screen 1 / success / failure screenshots
+  in `smoke/`.
+- `python3 tools/contrast_audit.py` exits 0 (dark + light + fallback, all pass).
+- `python3 -m unittest discover -s backend/tests -t .`: 169 run green (backend untouched
+  by this card; count grew via the merged `be-clear-dtc` route).
+
 ## 2026-09-24 — Mode 04 clear route (backend, branch `be-clear-dtc`)
 
 ### Added

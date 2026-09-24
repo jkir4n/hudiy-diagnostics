@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Playwright smoke for the S11 Mode-04 clear flow (800x480, keyboard only).
 
-Serves the real page from a replay backend; mocks /scan (fast, with codes)
-and POST /clear (success + 400/409/502 + slow timeout). Asserts the full
-two-step walk, knob/shim reachability, both outcome states, the offline gate,
-and zero app console errors. Screenshots land next to this script.
+Serves the real page from a replay backend; mocks /scan (fast, with codes).
+The happy path drives the REAL POST /clear; 400/409/502 + the slow timeout
+stay mocked. Asserts the full two-step walk, knob/shim reachability, both
+outcome states, the offline gate, and zero app console errors. Screenshots
+land next to this script.
 
 Run from the repo root:  python3 smoke/clear_smoke.py
 Needs: replay backend on 127.0.0.1:44419
   python3 -m backend.server --mode replay \\
-      --replay-fixtures fixtures/round1_full_capture.json --port 44419
+      --replay-fixtures smoke/replay_clear.json --port 44419
 """
 import json
 import os
@@ -22,15 +23,6 @@ with open(os.path.join(HERE, "scan_codes.json"), encoding="utf-8") as fh:
     SCAN_CODES = fh.read()
 with open(os.path.join(HERE, "scan_reread.json"), encoding="utf-8") as fh:
     SCAN_REREAD = fh.read()
-
-CLEAR_OK = {
-    "ok": True, "status": "done", "mode04_positive": True,
-    "duration_s": 1.2, "codes_seen_before": 3,
-    "followup": {"readiness": "incomplete",
-                 "message": "monitors reset; drive cycle needed"},
-    "permanent_codes_note": "One permanent code remains: only the ECU "
-                            "can clear it, after the repair proves out.",
-}
 
 CHECKS = []
 
@@ -139,11 +131,15 @@ def main():
                           body=body)
 
         def on_clear(route):
-            # Never sleep here: a blocking handler stalls this client's
-            # event loop and distorts every later wait. 'hold' parks the
-            # request unanswered so the working state stays put until the
-            # test fulfils it explicitly - fully deterministic.
+            # 'live' lets the request reach the real backend (replay
+            # fixture); 'hold' parks it unanswered so the working state
+            # stays put (timeout path). Never sleep in a handler: a
+            # blocking handler stalls this client's event loop and
+            # distorts every later wait.
             mode = state["clear_mode"]
+            if mode == "live":
+                route.continue_()
+                return
             if mode == "hold":
                 state["pending_clear"].append(route)
                 return
@@ -172,16 +168,6 @@ def main():
             except Exception:
                 pass  # client aborted (timeout path) - nothing to fulfil
 
-        def fulfil_clear_ok():
-            for route in state["pending_clear"]:
-                try:
-                    route.fulfill(status=200,
-                                  content_type="application/json",
-                                  body=json.dumps(CLEAR_OK))
-                except Exception:
-                    pass
-            state["pending_clear"] = []
-
         ctx.route("**/scan*", on_scan)
         ctx.route("**/clear*", on_clear)
         ctx.route("**/health*", on_health)
@@ -199,9 +185,10 @@ def main():
             return page
 
         # ---- scenario 1: full success walk, keyboard only ----
-        # 'hold' parks the /clear request so the working/spinner state
-        # stays put until fulfil_clear_ok() releases it - deterministic.
-        state.update(scan_calls=0, clear_mode="hold", pending_clear=[])
+        # LIVE /clear against the replay backend (smoke/replay_clear.json:
+        # Mode 03 pre-read holds P0401, Mode 04 answers 44). Error paths
+        # below stay mocked.
+        state.update(scan_calls=0, clear_mode="live", pending_clear=[])
         page = new_page()
         check("lands on S0", screen(page) == "S0", screen(page))
         if not reach_scan_results(page):
@@ -223,9 +210,15 @@ def main():
                       needle in body_text)
             check("screen1 permanent honesty line",
                   "cannot be erased by any scan tool" in body_text)
+            check("screen1 names the codes",
+                  "This reset erases: P0301" in txt(page,"#clearWrap")
+                  and "P0401" in txt(page,"#clearWrap")
+                  and "P0420" in txt(page,"#clearWrap"),
+                  txt(page,"#clearWrap")[-200:])
             check("no battery-disconnect advice",
-                  "disconnect the battery" not in body_text.lower()
-                  and "disconnecting the battery" not in body_text.lower())
+                  not any(adv in body_text.lower() for adv in
+                          ("try disconnect", "disconnect the battery to",
+                           "or disconnect the", "instead, disconnect")))
             clear_btn = page.query_selector(
                 "#actions button.btn-danger")
             check("clear-now gated while unchecked",
@@ -285,20 +278,26 @@ def main():
                     check("keyboard finds Clear now", False)
                 else:
                     page.keyboard.press("Enter")
-                    page.wait_for_selector(
-                        "#clearWrap .scan-mark.is-busy", timeout=3000)
-                    check("working shows spinner", True)
-                    fulfil_clear_ok()  # release the parked request
+                    # The live backend answers in ~0.5 s: read the spinner
+                    # immediately (one round-trip) instead of racing a wait.
+                    check("working shows spinner", page.evaluate(
+                        "!!document.querySelector('#clearWrap"
+                        " .scan-mark.is-busy')"))
                     page.wait_for_selector(
                         "#clearWrap .scan-mark.is-done", timeout=12000)
                     check("success morphs to check", True)
                     follow = txt(page,"#clearWrap")
+                    check("live pre-read counted",
+                          "1 code(s) held before the reset" in follow,
+                          follow[:200])
+                    check("live duration shown",
+                          "confirmed in" in follow)
                     check("followup message shown",
                           "monitors reset; drive cycle needed" in follow)
                     check("afterClear copy wired",
                           "must prove itself healthy again" in follow)
                     check("server permanent note shown",
-                          "only the ECU can clear it" in follow)
+                          "cannot be cleared by any tool" in follow)
                     page.wait_for_function(
                         "document.querySelector('#clearWrap')"
                         ".textContent.includes('Readiness re-read')",

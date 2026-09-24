@@ -300,6 +300,11 @@
     S.screen = id;
     S.focus = 0;
     document.body.setAttribute('data-screen', id);
+    // A toast belongs to the screen that raised it: never let a stale
+    // snackbar (e.g. "Scan finished") linger over the next screen's
+    // content - on S11 it physically covers the fix-first checkbox.
+    var toastBox = $('toast');
+    if (toastBox) { toastBox.hidden = true; }
     var sections = document.querySelectorAll('.screen');
     for (var i = 0; i < sections.length; i++) {
       sections[i].classList.toggle('active', sections[i].id === id);
@@ -1614,6 +1619,13 @@
       ' pending \u00b7 ' + counts.permanent + ' permanent \u00b7 ' +
       'from the last scan' + (S.scanAt ? ' (' + S.scanAt.toLocaleTimeString() + ')' : ''));
     add(wrap, meta);
+    // Never clear blind: name the exact codes the reset will erase.
+    var names = codeList('stored').concat(codeList('pending'), codeList('permanent'))
+      .map(function (entry) { return (entry && entry.code) || '?'; })
+      .filter(function (code, index, all) { return all.indexOf(code) === index; });
+    if (names.length) {
+      add(wrap, el('p', 'stamp', 'This reset erases: ' + names.join(' \u00b7 ')));
+    }
   }
 
   function renderClearWorking(wrap) {

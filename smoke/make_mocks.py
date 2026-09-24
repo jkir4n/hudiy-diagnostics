@@ -90,6 +90,25 @@ def main():
         json.dump(cleared, handle)
     print("wrote %s and %s" % (OUT, OUT2))
 
+    # replay_clear.json: a ReplayHost command map for the LIVE /clear happy
+    # path - the round-1 capture with a Mode 03 that holds one stored code
+    # (P0401, the same bytes backend/tests/test_diag_clear.py uses) plus a
+    # positive Mode 04 answer. Serve with:
+    #   python3 -m backend.server --mode replay \
+    #       --replay-fixtures smoke/replay_clear.json --port 44419
+    round1_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "fixtures", "round1_full_capture.json")
+    with open(round1_path, encoding="utf-8") as handle:
+        cap = json.load(handle)
+    cap["03"] = {"raw": ["43 01 04 01"]}
+    cap["04"] = {"raw": ["44"]}
+    out3 = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "replay_clear.json")
+    with open(out3, "w", encoding="utf-8") as handle:
+        json.dump(cap, handle)
+    print("wrote %s" % out3)
+
 
 if __name__ == "__main__":
     main()
