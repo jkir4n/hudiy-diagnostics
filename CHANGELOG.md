@@ -2,6 +2,23 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-24 — Motion pass: 4 transform-only micro-interactions (frontend, branch `motion-pass`)
+
+### Added
+- `frontend/diag.css`: one `motion` section (transform + opacity keyframes only — shimmer slide, mark spin/pop, skeleton pulse, reveal fade, error shake; cubic-bezier snap on the shake). All sizes via `--md-sys-spacing-*`, colours via `--m3-*`/panel aliases, the check glyph via a `--md-sys-typescale-*` role; no new `box-shadow` (toast keeps the single one), no `filter`, no animated layout properties. `body.reduced-motion` resolves every new animation to a static state.
+- `frontend/diag.js`: additive motion helpers only (`ensureScanMark`, `swapText`, `revealOnce`, `shakeOnce`, `syncScanMotion`, `markScanDone` — class toggles on state changes, reflow-restarted one-shot keyframes, `animationend` settle; no per-frame timers). Hooks: S1 label shimmer + spinner while `S.busy`, skeleton lines while `S.reportState === 'loading'`, one-shot reveal on fresh verdict/deep/report content, one-shot shake on the failure panel, spinner→check pop recorded before leaving S1. `window.__diagKeyNav()` contract, focus ring geometry and knob/shim behaviour untouched.
+
+### Notes
+- Surface mapping deviation (backend has no Mode 04 clear call, so there is no clear-success/failure flow to animate): the shake/check pair maps to the nearest real surfaces — scan-failure panel shake (snackbar kept) and scan-status spinner→check. `docs/UI_MOTION_REFERENCES.md` shortlist table carries the per-effect status.
+- 5th candidate (digit-roll on PID values) skipped: live values re-render as whole text nodes, so a reel would need per-digit DOM plus timers — over budget for this pass.
+- Pre-existing `track-fill` sweep still animates `margin-left` (left alone; out of scope, not extended).
+
+### Verified
+- Headless Playwright smoke (800x480, mocked lane): scanning shows shimmer + spinner running (8/8), report shows 4-line skeleton then reveal (5/5), forced failure shakes once then settles with no residual transform (5/5), success records the check-morph state (8/8), reduced-motion kills all new animations and the 3px/2px focus ring is intact (9/9). Zero app console errors (the forced-500 run logs only Chromium's own 'Failed to load resource' narration). Before/after screenshots attached to the task.
+- `python3 tools/contrast_audit.py` exits 0 (no colour pair changed).
+- `python3 -m unittest discover -s backend/tests -t .`: 139 run, 137 pass, 2 skipped, 0 fail (backend untouched; note: the bare `cd backend && discover tests` form fails on `backend.*` imports even on a clean tree — run from the repo root with `-t .`).
+- Diff grep audit: no added `filter:`, `mask-position`, `box-shadow`, layout-property animation, per-frame timer, or hardcoded font-size/weight/line-height.
+
 ## 2026-09-24 — M3 fidelity pass (frontend, branch `m3-fidelity`)
 
 ### Added

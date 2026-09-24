@@ -703,3 +703,130 @@ body:not(.kb) .ctl:focus { outline: none; }
  * fade so the transition to the car's own UI is not a hard cut. */
 body.exited #app { opacity: 0; pointer-events: none; transition: opacity .18s ease-out; }
 body.exited, body.exited * { cursor: default; }
+
+/* ---------------------------------------------------------------- motion */
+
+/* Motion pass (2026-09-24, adapted from transitions.dev shortlist in
+ * docs/UI_MOTION_REFERENCES.md): 4 transform/opacity-only micro-interactions.
+ * Hard rules: no filter, no animated mask-position/box-shadow/width/height,
+ * no per-frame JS timers, one box-shadow stays (toast above). All sizes via
+ * --md-sys-spacing-*, all colours via --m3-*, type via --md-sys-typescale-*.
+ * body.reduced-motion (set from prefers-reduced-motion in diag.js) kills
+ * every animation below with a static fallback. Backend has no Mode 04, so
+ * the shake/check pair maps to the nearest real surfaces: scan failure and
+ * scan completion (see docs/UI_MOTION_REFERENCES.md status column). */
+
+/* 1. Status-line shimmer + swap (S1 scan in flight). The gradient is static;
+ * only the pseudo-element's transform moves. Step/label text swaps cross-fade
+ * via an opacity-only keyframe re-triggered from swapText() in diag.js. */
+.scan-top .scan-label { flex: 1 1 auto; }
+.scan-label { transition: opacity .16s ease-out; }
+.scan-label.is-scanning { position: relative; overflow: hidden; }
+.scan-label.is-scanning::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, var(--m3-surface-bright) 50%, transparent 80%);
+  opacity: .55;
+  transform: translateX(-100%);
+  animation: label-shimmer 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes label-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.scan-label.swap-in { animation: label-swap .18s ease-out; }
+@keyframes label-swap {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Scan status mark: pie spinner while busy, check pop when done.
+ * Rotation/scale/opacity only; colours from M3 roles. Inserted by
+ * ensureScanMark() in diag.js as the first child of .scan-top. */
+.scan-mark {
+  flex: 0 0 auto;
+  align-self: center;
+  width: var(--md-sys-spacing-4);
+  height: var(--md-sys-spacing-4);
+  margin-right: var(--md-sys-spacing-2);
+  /* The row height is set by the timer's headline type, so plain centering
+   * parks the 16px mark a step above the label's optical centre; one spacing
+   * step down re-seats it next to the label text. */
+  margin-top: var(--md-sys-spacing-1);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--panel-2);
+  position: relative;
+  overflow: hidden;
+}
+.scan-mark.is-busy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(var(--info) 0deg 90deg, transparent 90deg 360deg);
+  animation: mark-spin .9s linear infinite;
+}
+@keyframes mark-spin {
+  0% { transform: rotate(0); }
+  100% { transform: rotate(1turn); }
+}
+.scan-mark.is-done { background: var(--m3-tertiary); }
+.scan-mark.is-done::after {
+  content: "\2713";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--m3-on-tertiary);
+  font: var(--md-sys-typescale-label-medium);
+  animation: mark-pop .22s ease-out;
+}
+@keyframes mark-pop {
+  0% { opacity: 0; transform: scale(.4) rotate(-30deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+/* 2. Skeleton loader + reveal (S8 report loading, S2/S9 fresh content).
+ * Skeleton pulses opacity only; content cross-fades in one shot. */
+.skel {
+  display: block;
+  height: var(--md-sys-spacing-3);
+  margin: var(--md-sys-spacing-2) 0;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--panel-2);
+  animation: skel-pulse 1.2s ease-in-out infinite;
+}
+.skel.short { width: 60%; }
+@keyframes skel-pulse {
+  0%, 100% { opacity: .45; }
+  50% { opacity: 1; }
+}
+.reveal-in { animation: reveal-in .18s ease-out; }
+@keyframes reveal-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* 3. Error-state shake (scan failure panel; snackbar kept). translateX only,
+ * cubic-bezier snap, runs once; shakeOnce() in diag.js removes the class on
+ * animationend so the panel settles with no residual transform. Offsets use
+ * the 4dp spacing tokens (4px/8px). */
+.shake-once { animation: shake-x .32s cubic-bezier(.36, .07, .19, .97); }
+@keyframes shake-x {
+  10%, 90% { transform: translateX(calc(-1 * var(--md-sys-spacing-1))); }
+  20%, 80% { transform: translateX(var(--md-sys-spacing-1)); }
+  30%, 50%, 70% { transform: translateX(calc(-1 * var(--md-sys-spacing-2))); }
+  40%, 60% { transform: translateX(var(--md-sys-spacing-2)); }
+}
+
+/* Reduced motion: every new animation above resolves to a static state. */
+body.reduced-motion .scan-label.is-scanning::after { animation: none; opacity: 0; }
+body.reduced-motion .scan-label.swap-in { animation: none; }
+body.reduced-motion .scan-mark.is-busy::before { animation: none; opacity: .5; }
+body.reduced-motion .scan-mark.is-done::after { animation: none; }
+body.reduced-motion .skel { animation: none; opacity: .6; }
+body.reduced-motion .reveal-in { animation: none; }
+body.reduced-motion .shake-once { animation: none; }

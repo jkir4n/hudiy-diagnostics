@@ -26,6 +26,15 @@ Mapped to real surfaces (what exists today: scan sweep, exit fade, m3 snackbar):
 | spinner→check morph | DTC clear success | snackbar text only |
 | number roll (digit reel) | PID values (RPM, speed) | instant text set — test on Pi first, staggered digits can cost |
 
+Motion-pass status (24 Sep 2026, branch `motion-pass`): adopted 4/5.
+| candidate | status | landed as |
+|---|---|---|
+| status-line shimmer + swap | adopted | `.scan-label.is-scanning` (translateX gradient pseudo) + `.swap-in` opacity cross-fade via `swapText()`; S1 label, deep variant "Reading every PID" |
+| skeleton loader + reveal | adopted | `.skel` ×4 (opacity pulse) in `#reportPre` while loading + one-shot `.reveal-in` on fresh verdict/deep/report content via `revealOnce()` |
+| error shake | adopted (surface adapted) | `.shake-once` translateX keyframe on the failure panel (`#s0Hero` / `#verdict`) via `shakeOnce()`; snackbar kept. No Mode 04 clear flow exists in backend or frontend, so there is no clear-failure row — scan failure is the nearest real error panel |
+| spinner→check morph | adopted (surface adapted) | `.scan-mark` pie spinner (rotate) while busy → check pop (scale/rotate/opacity) via `markScanDone()`; same Mode 04 note — mapped to the S1 scan-status mark |
+| number roll (digit reel) | skipped | live values render as whole text nodes; a reel needs per-digit DOM + timers — over budget for a Pi webview this pass |
+
 Only 2–3 of these per future polish card; verify each with `body.reduced-motion`
 honouring (existing rule) and a CPU eyeball via `vcgencmd` while animating.
 

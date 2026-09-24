@@ -364,6 +364,7 @@
   /* ------------------------------------------------------------- S1 scan */
 
   function renderScan() {
+    syncScanMotion();   // motion pass: shimmer + spinner states ride S.busy
     var steps = $('scanSteps');
     if (S.scan) { return; }
     if (!steps.children.length) {
@@ -457,6 +458,8 @@
     $('scanStamp').textContent = 'Scan ' + (S.scanAt ? S.scanAt.toLocaleTimeString() : '\u2013') +
       ' \u00b7 ' + num(S.scan.duration_s, 1) + ' s \u00b7 lane ' +
       ((S.scan.obd && S.scan.obd.host_name) ? S.scan.obd.host_name : 'unknown');
+    // motion pass: fresh verdict cross-fades in once per scan, not per render
+    revealOnce(card, 'scan:' + (S.scanAt ? S.scanAt.getTime() : 'none'));
   }
 
   function countBox(value, label, tone) {
@@ -1059,6 +1062,8 @@
       add(item, row);
       list.appendChild(item);
     });
+    // motion pass: fresh deep rows cross-fade in once per read, not per render
+    revealOnce(list, 'deep:' + src.from + ':' + src.rows.length);
   }
 
   /* ---------------------------------------------------------- S7 identity */
@@ -1195,10 +1200,33 @@
     });
 
     var pre = $('reportPre');
-    if (S.reportState === 'loading') { pre.textContent = 'Fetching the ' + S.reportFmt + ' report\u2026'; }
-    else if (S.reportState === 'error') { pre.textContent = 'Report unavailable.\n\n' + (S.reportBody || 'The backend did not answer /report.'); }
-    else if (S.reportBody) { pre.textContent = S.reportBody; }
-    else { pre.textContent = COPY.noReport; }
+    if (S.reportState === 'loading') {
+      // motion pass: skeleton lines (opacity pulse) while the lane answers
+      pre.classList.remove('reveal-in');
+      pre.classList.add('is-loading');
+      if (!pre.querySelector('.skel')) {
+        pre.textContent = '';
+        for (var sk = 0; sk < 4; sk++) {
+          var line = el('span', 'skel' + (sk === 3 ? ' short' : ''));
+          line.setAttribute('aria-hidden', 'true');
+          pre.appendChild(line);
+        }
+      }
+    }
+    else if (S.reportState === 'error') {
+      pre.classList.remove('is-loading');
+      pre.textContent = 'Report unavailable.\n\n' + (S.reportBody || 'The backend did not answer /report.');
+      revealOnce(pre, 'report:error:' + (S.reportBody || '').length);
+    }
+    else if (S.reportBody) {
+      pre.classList.remove('is-loading');
+      pre.textContent = S.reportBody;
+      revealOnce(pre, 'report:done:' + S.reportBody.length);
+    }
+    else {
+      pre.classList.remove('is-loading');
+      pre.textContent = COPY.noReport;
+    }
 
     var box = $('settings');
     clear(box);
@@ -2103,12 +2131,15 @@
       if (kind === 'deep') {
         toast('Deep scan failed: the diagnostics lane did not answer (' + (error || 'no payload') +
               '). The last report is untouched.', 'bad');
-        go(S.scan ? 'S2' : 'S0');
+        var back = S.scan ? 'S2' : 'S0';
+        go(back);
+        shakeOnce($(back === 'S2' ? 'verdict' : 's0Hero'));   // motion: error shake
         return;
       }
       S.degraded = { status: 'error', reason: 'the diagnostics lane did not answer (' + (error || 'no payload') + ')' };
       toast('Scan failed: ' + S.degraded.reason, 'bad');
       go('S0');
+      shakeOnce($('s0Hero'));   // motion: error shake (snackbar kept)
       return;
     }
     var data = res.data;
@@ -2125,6 +2156,7 @@
         var heard = rows.filter(function (r) { return r.ok; }).length;
         toast('Deep read finished in ' + num(data.duration_s, 1) + ' s: ' +
               heard + ' of ' + rows.length + ' PIDs answered.', 'info');
+        markScanDone();   // motion: spinner pops to check before leaving S1
         go('S9');
         return;
       }
@@ -2140,6 +2172,7 @@
       S.reportState = 'idle';
       if (kind === 'full') { S.deep = null; }  // the full report carries a fresher allpids read
       toast('Scan finished in ' + num(data.duration_s, 1) + ' s: ' + (data.summary || 'complete') + '.', 'info');
+      markScanDone();   // motion: spinner pops to check before leaving S1
       go('S2');
       return;
     }
@@ -2156,6 +2189,7 @@
     };
     toast('No scan data: ' + S.degraded.reason, 'warn');
     go('S0');
+    shakeOnce($('s0Hero'));   // motion: failure panel shakes once (snackbar kept)
   }
 
   function cancelScan() {
@@ -2175,6 +2209,87 @@
     box.hidden = false;
     if (toastTimer) { window.clearTimeout(toastTimer); }
     toastTimer = window.setTimeout(function () { box.hidden = true; }, TOAST_MS);
+  }
+
+  /* -------------------------------------------------------------- motion */
+
+  /* Motion pass (2026-09-24): class toggles only — no per-frame JS timers,
+   * no layout-property animation. Animations live in diag.css; these helpers
+   * just attach/remove classes on state changes. Knob/shim navigation and
+   * the window.__diagKeyNav() contract are untouched. */
+
+  function ensureScanMark() {
+    var top = document.querySelector('.card-scan .scan-top');
+    if (!top) { return null; }
+    var mark = top.querySelector('.scan-mark');
+    if (!mark) {
+      mark = el('span', 'scan-mark');
+      mark.setAttribute('aria-hidden', 'true');
+      top.insertBefore(mark, top.firstChild);
+    }
+    return mark;
+  }
+
+  // Cross-fade a label to new text: sets the text once, re-triggers the
+  // opacity-only .swap-in keyframe via a reflow (no timers).
+  function swapText(node, text) {
+    if (!node || node.__swapText === text) { return; }
+    node.__swapText = text;
+    node.textContent = text;
+    node.classList.remove('swap-in');
+    void node.offsetWidth;
+    node.classList.add('swap-in');
+  }
+
+  // One-shot cross-fade for fresh content: animates once per key, never on
+  // every render.
+  function revealOnce(node, key) {
+    if (!node || node.__revealKey === key) { return; }
+    node.__revealKey = key;
+    node.classList.remove('reveal-in');
+    void node.offsetWidth;
+    node.classList.add('reveal-in');
+  }
+
+  // One-shot error shake: the class runs the keyframe once, animationend
+  // removes it so the panel settles with no residual transform.
+  function shakeOnce(node) {
+    if (!node) { return; }
+    node.classList.remove('shake-once');
+    void node.offsetWidth;
+    var done = function () {
+      node.classList.remove('shake-once');
+      node.removeEventListener('animationend', done);
+    };
+    node.addEventListener('animationend', done);
+    node.classList.add('shake-once');
+  }
+
+  // S1 status states: shimmer + spinner while busy, static otherwise.
+  function syncScanMotion() {
+    var label = document.querySelector('.card-scan .scan-label');
+    var mark = ensureScanMark();
+    var busy = !!S.busy;
+    if (label) {
+      label.classList.toggle('is-scanning', busy);
+      if (busy) {
+        swapText(label, S.scanKind === 'deep' ? 'Reading every PID' : 'Asking the ECU');
+      } else {
+        label.classList.remove('swap-in');
+      }
+    }
+    if (mark) {
+      if (busy) { mark.classList.remove('is-done'); mark.classList.add('is-busy'); }
+      else { mark.classList.remove('is-busy'); }
+    }
+  }
+
+  // Scan completed: spinner pops into a drawn check (scale/rotate/opacity).
+  function markScanDone() {
+    var label = document.querySelector('.card-scan .scan-label');
+    var mark = document.querySelector('.card-scan .scan-mark');
+    if (mark) { mark.classList.remove('is-busy'); mark.classList.add('is-done'); }
+    if (label) { label.classList.remove('is-scanning'); swapText(label, 'Scan complete'); }
   }
 
   /* ----------------------------------------------------------------- boot */
