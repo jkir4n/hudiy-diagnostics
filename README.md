@@ -37,6 +37,21 @@ fixtures/
   probe_round5_method.py         # probe client method (Hudiy protobuf, strict abort-on-timeout)
 ```
 
+## HTTP lane (`python3 -m backend.server`, default `127.0.0.1:44414`)
+
+`GET /health` (aka `/diag/status`), `GET /scan`, `GET /report?format=text|csv|json`,
+`GET /capability`, `GET /dtc?code=`, `GET /vin?vin=`, `POST /ui/hide` (overlay Exit),
+and the one car-changing call: `POST /clear` (or `/diag/clear`) with `confirm=yes`
+in the query string or the POST body (form or JSON). Without the confirm flag the
+lane answers 400 naming the consequence list (codes + freeze frame + readiness +
+Mode 06 results erased, monitors reset so no emissions pass until a drive cycle,
+possible re-learn roughness, fix-first guidance per `docs/FEATURE_SURVEY_FINDINGS.md`
+section 5); permanent Mode 0A codes are never clearable by any tool. A confirmed
+clear answers the seam contract (`mode04_positive`, `codes_seen_before`, `followup`,
+`permanent_codes_note`), a silent/refusing ECU gets a structured
+`unsupported`/`refused` answer, and a timeout is a 502 saying the codes were NOT
+confirmed cleared.
+
 ## The vehicle (this capture only — the APP must discover these at runtime)
 - VIN `WVWZZZ1KZAW555555` (synthetic placeholder — the capture was anonymised), ECM "ECM-EngineControl", diesel monitor map.
 - Supported PIDs & OBDMIDs: see `docs/DECODED_FIXTURES.md`.

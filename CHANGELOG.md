@@ -2,6 +2,43 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-24 — Mode 04 clear route (backend, branch `be-clear-dtc`)
+
+### Added
+- `POST /clear` (alias `/diag/clear`) on the diagnostics lane: `backend/diag/clear.py`
+  (Mode 04 interpretation + safety copy) + `DiagService.clear()` in `backend/server.py`.
+  Hard gate: `confirm=yes` in the query string or the POST body (form or JSON) or the
+  request is rejected 400 naming the consequence-list requirement — the backend is the
+  safety boundary, the UI cannot bypass it. GET /clear is refused 405.
+- Mode 04 rides the existing lane (`send`/`wait`, single-flight, <=15 s, one retry max);
+  a second concurrent clear (or a scan/clear overlap) gets 409. Mode 03 pre-read feeds
+  `codes_seen_before` (0 allowed); a timed-out pre-read aborts before anything is sent.
+- Outcomes: positive `44` (incl. ELM echo variants, request-echo stripped sequentially,
+  never regex) -> the seam contract (`ok/status/mode04_positive/duration_s/`
+  `codes_seen_before/followup/permanent_codes_note`); NO DATA/empty -> structured 200
+  `unsupported`; `7F 04 <NRC>` -> structured 200 `refused` with `nrc`/`nrc_name`;
+  timeout or unrecognised reply -> 502 whose message always says the codes were NOT
+  confirmed cleared. `followup` is data for the UI's result screen
+  (`readiness: incomplete`, drive-cycle message); `permanent_codes_note` carries the
+  Mode 0A honesty line (no tool can clear permanent codes; never battery-disconnect
+  advice, per `docs/FEATURE_SURVEY_FINDINGS.md` section 5).
+- `backend/tests/test_diag_clear.py`: 30 tests (confirm gate incl. no-lane-send,
+  single-flight incl. threaded + scan-overlap both directions, positive/echo/zero-code,
+  silence/refusal/garbage/timeout paths, exact seam key sets, JSON + form + query
+  confirm, loopback POST round-trips, copy rules). `do_POST` now parses the body
+  (capped at 64 KiB) into `handle()` instead of draining it.
+- `docs/V1_SPEC.md` backend-shape endpoints, new README "HTTP lane" section.
+
+### Notes
+- Supersedes the 2026-09-24 motion-pass note that claimed "backend has no Mode 04
+  clear call": that call now exists, so the clear-success/failure flow is animatable.
+- No live ECU answers Mode 04 in dev: all new coverage is synthetic ReplayHost /
+  scripted-host round-trips (positive 44, empty NO DATA, `7F 04 11/22`).
+
+### Verified
+- `python3 -m unittest discover -s backend/tests -t .`: 169 run, 167 pass, 2 skipped
+  (pre-existing skips), 0 fail — was 139/137/2/0 before this change.
+
 ## 2026-09-24 — Motion pass: 4 transform-only micro-interactions (frontend, branch `motion-pass`)
 
 ### Added

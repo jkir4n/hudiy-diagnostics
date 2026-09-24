@@ -78,6 +78,11 @@ Complete PID support map for this car (all captured):
   - `GET /diag/scan` â€” runs the full scan sequence, returns structured JSON
   - `GET /diag/status` â€” scanner state (idle/scanning/stale-handle/reconnecting)
   - `GET /diag/report.(txt|csv)` â€” generated report
+  - `POST /diag/clear` - Mode 04 clear, gated on `confirm=yes` (query or
+    POST body, form or JSON); answers the seam contract
+    (`ok/status/mode04_positive/duration_s/codes_seen_before/followup/` +
+    `permanent_codes_note`), `unsupported`/`refused` structured 200s, or a
+    502 that always says the codes were NOT confirmed cleared
 - Sequence discipline: one request at a time through `obd_lock`, 1.5 s
   inter-query spacing (charts poller precedent), abort-on-first-timeout for
   the scan set, guarded single attempt for 0904/0906.
