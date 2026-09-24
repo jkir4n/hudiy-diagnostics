@@ -127,6 +127,9 @@ PAIRS = [
     ("count info", "--info", "--m3-surface-container", 28, 400, ".count[data-tone=info]"),
     ("progress fill", "--m3-primary", "--m3-surface-container-high", 0, 0, ".track-fill (graphics, 3:1)"),
     ("focus ring", "--m3-primary", "--m3-background", 0, 0, ".focused (indicator, 3:1)"),
+    ("clear confirm", "--m3-on-error-container", "--m3-error-container", 14, 500, ".btn-danger (S11 Clear now)"),
+    ("clear confirm gated", "--m3-on-surface", "--m3-surface-container", 14, 500, ".btn-danger[disabled] (hollow on card)"),
+    ("check row text", "--m3-on-surface", "--m3-surface-container-high", 14, 400, ".check-row (fix-first)"),
 ]
 
 

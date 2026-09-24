@@ -81,8 +81,54 @@
       'No report has been produced on this backend yet. Run a scan, or fetch a report after one ' +
       'has completed.',
     clearCodes:
-      'Clearing codes is not part of this version: the backend has no Mode 04 call at all. If ' +
-      'codes ever need clearing, the cost is that every readiness monitor restarts from zero.'
+      'Fault codes can be cleared from the Fault codes screen once a scan has ' +
+      'found any: the entry button appears there while the ECU link is online. ' +
+      'Clearing is a two-step confirm, and every clear resets all readiness ' +
+      'monitors to Not ready.',
+    clearLead:
+      'Clearing sends a Mode 04 reset to the ECU. Read this first - ' +
+      'the reset cannot be undone, and the list below is the full cost.',
+    clearEffects: [
+      'Stored fault codes are erased, along with freeze-frame snapshots and ' +
+      'the last monitor-test results held alongside them.',
+      'Every readiness monitor resets to Not ready. The car will not pass an ' +
+      'emissions test until a full drive cycle re-completes them - on a diesel ' +
+      'that is typically 60 to 90 minutes of specific driving, or more.',
+      'The car may run slightly roughly for a while afterwards, while the ECU ' +
+      're-learns its fuel trims.',
+      'If the underlying fault is not repaired, the codes will come straight back.'
+    ],
+    clearFixFirst:
+      'I understand the codes will return if the fault is not repaired, and ' +
+      'that this resets all emissions self-tests',
+    clearClearNow: 'Clear now',
+    clearBack: 'Back to codes',
+    clearWorking: 'Sending the reset to the ECU',
+    clearDoneHead: 'Fault codes cleared',
+    clearFollowTitle: 'What happens next',
+    clearGuideShow: 'Show drive-cycle guidance',
+    clearGuideHide: 'Hide drive-cycle guidance',
+    clearTimeout:
+      'The clear request timed out - the ECU did not confirm in time. ' +
+      'The codes may or may not have been erased: run a scan and check ' +
+      'before trying again.',
+    clearBusy:
+      'A clear is already running on the backend. Wait for it to finish ' +
+      'before trying again.',
+    clearCancelled:
+      'Clear cancelled before the ECU answered. Nothing was confirmed, so ' +
+      'run a scan to see what the ECU still holds.',
+    clearNetFail:
+      'Clear failed: the backend did not answer. Nothing was confirmed, so ' +
+      'run a scan to see what the ECU still holds before trying again.',
+    clearReread:
+      'Re-reading the readiness wall to show the reset state.',
+    clearRereadFail:
+      'The follow-up re-read did not answer - the reset result above still ' +
+      'stands. Open the readiness wall to check the monitors directly.',
+    clearOffline:
+      'The ECU link is not online, so clearing is unavailable. ' +
+      'Wait for the link to reconnect first.'
   };
 
   var HINTS = {
@@ -185,6 +231,9 @@
     cap: null,       // capability JSON once /capability has answered
     capText: null,   // paste-ready sheet text for the export actions
     capState: 'idle',
+    clear: null,     // Mode 04 flow state once the S11 screen has opened
+    clearAbort: null, // in-flight POST /clear controller (single-flight)
+    clearBusy: false, // true while a clear request is on the wire
     scanKind: null,  // 'full' | 'quick' | 'deep' while S.busy
     scanSections: null, // legend filter for the in-flight scan (S1)
     started: 0,
@@ -204,10 +253,11 @@
     S7: { title: 'Vehicle', subtitle: 'Identity' },
     S8: { title: 'Report', subtitle: 'Settings' },
     S9: { title: 'Deep scan', subtitle: 'Every advertised PID' },
-    S10: { title: 'Compatibility', subtitle: 'This car, this app' }
+    S10: { title: 'Compatibility', subtitle: 'This car, this app' },
+    S11: { title: 'Clear fault codes', subtitle: 'Mode 04 reset' }
   };
 
-  var PARENT = { S1: 'S0', S2: 'S0', S3: 'S2', S4: 'S3', S5: 'S2', S6: 'S2', S7: 'S2', S8: 'S0', S9: 'S2', S10: 'S8' };
+  var PARENT = { S1: 'S0', S2: 'S0', S3: 'S2', S4: 'S3', S5: 'S2', S6: 'S2', S7: 'S2', S8: 'S0', S9: 'S2', S10: 'S8', S11: 'S3' };
 
   function screenEl(id) { return $(id || S.screen); }
 
@@ -275,6 +325,7 @@
     if (S.screen === 'S8') { renderReport(); }
     if (S.screen === 'S9') { renderDeep(); }
     if (S.screen === 'S10') { renderCompat(); }
+    if (S.screen === 'S11') { renderClear(); }
     renderActions();
     paintFocus();
   }
@@ -1460,6 +1511,316 @@
       pad(d.getHours()) + pad(d.getMinutes()) + '.txt';
   }
 
+  /* ------------------------------------------------- S11 clear fault codes */
+
+  /* Mode 04 two-screen confirm flow (docs/FEATURE_SURVEY_FINDINGS.md section 5:
+   * screen 1 = consequence list + fix-first checkbox, screen 2 = result +
+   * readiness-incomplete follow-up). Seam contract: POST /clear?confirm=yes;
+   * {ok, status, mode04_positive, duration_s, codes_seen_before, followup,
+   * [permanent_codes_note]}; 400 missing confirm, 409 already clearing,
+   * 502 not confirmed cleared. confirm travels as a query parameter, like
+   * every other argument on this backend (/scan?sections=, /report?format=).
+   * Single-flight: S.clearBusy guards the POST, the backend 409s the rest. */
+
+  var CLEAR_TIMEOUT_MS = 30000;
+
+  function clearTimeoutMs() {
+    // Bench hook only: ?clearTimeoutMs= shortens the wait so the smoke test
+    // can exercise the timeout path without stalling 30 s.
+    var q = param('clearTimeoutMs');
+    var n = q ? parseInt(q, 10) : NaN;
+    return (n > 0) ? n : CLEAR_TIMEOUT_MS;
+  }
+
+  function laneOnline() {
+    return !!(S.health && S.health.obd && S.health.obd.state === 'online');
+  }
+
+  function clearCounts() {
+    return {
+      stored: codeList('stored').length,
+      pending: codeList('pending').length,
+      permanent: codeList('permanent').length
+    };
+  }
+
+  function openClear() {
+    if (!laneOnline()) { toast(COPY.clearOffline, 'warn'); return; }
+    if (S.clearBusy) { toast(COPY.clearBusy, 'warn'); return; }
+    S.clear = { stage: 'confirm', checked: false, result: null, error: null,
+                guide: false, rereading: false, timedOut: false,
+                cancelled: false, at: null };
+    go('S11');
+  }
+
+  function renderClear() {
+    var wrap = $('clearWrap');
+    clear(wrap);
+    if (!S.clear) { S.clear = { stage: 'confirm', checked: false, result: null, error: null, guide: false, rereading: false }; }
+    if (S.clear.stage === 'done') { renderClearDone(wrap); }
+    else if (S.clear.stage === 'working') { renderClearWorking(wrap); }
+    else { renderClearConfirm(wrap); }
+  }
+
+  function clearHead(wrap, sev, headline) {
+    var card = el('div', 'card verdict');
+    card.id = 'clearCard';
+    card.setAttribute('data-sev', sev);
+    add(card, el('p', 'verdict-headline', headline));
+    add(wrap, card);
+    return card;
+  }
+
+  function renderClearConfirm(wrap) {
+    var counts = clearCounts();
+    var total = counts.stored + counts.pending + counts.permanent;
+    var card = clearHead(wrap, 'warn',
+      total ? ('Clear ' + total + ' fault code' + (total === 1 ? '' : 's') + '?')
+            : 'Clear fault codes?');
+    add(card, el('p', 'verdict-sub', COPY.clearLead));
+    var list = el('ul', 'clear-list');
+    COPY.clearEffects.forEach(function (line) {
+      add(list, el('li', 'verdict-sub', line));
+    });
+    add(card, list);
+    // Permanent-code honesty line: the last scan still holds some, or the
+    // last clear/scan context carried the note - either way no tool clears
+    // those; only the ECU does. (Never battery-disconnect advice: survey
+    // section 5 rule 3.)
+    if (counts.permanent > 0 || (S.clear.result && S.clear.result.permanent_codes_note)) {
+      add(card, el('p', 'verdict-sub', COPY.permanent));
+    }
+    if (S.clear.result && S.clear.result.permanent_codes_note && counts.permanent === 0) {
+      add(card, el('p', 'verdict-sub', S.clear.result.permanent_codes_note));
+    }
+    // Fix-first checkbox: a wrapping label is the .ctl (one focus stop, not
+    // two). label.click() forwards to the input, so knob/shim 'activate',
+    // keyboard space/enter and touch all toggle through the same 'change'
+    // event with no double-toggle.
+    var row = el('label', 'check-row ctl');
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.id = 'clearFixFirst';
+    box.checked = !!S.clear.checked;
+    box.addEventListener('change', function () {
+      S.clear.checked = box.checked;
+      renderActions();
+      paintFocus();
+    });
+    row.appendChild(box);
+    add(row, el('span', null, COPY.clearFixFirst));
+    add(card, row);
+    var meta = el('p', 'stamp', counts.stored + ' stored \u00b7 ' + counts.pending +
+      ' pending \u00b7 ' + counts.permanent + ' permanent \u00b7 ' +
+      'from the last scan' + (S.scanAt ? ' (' + S.scanAt.toLocaleTimeString() + ')' : ''));
+    add(wrap, meta);
+  }
+
+  function renderClearWorking(wrap) {
+    var card = el('div', 'card card-scan');
+    card.id = 'clearCard';
+    var top = el('div', 'scan-top');
+    var mark = el('span', 'scan-mark is-busy');
+    mark.setAttribute('aria-hidden', 'true');
+    add(top, mark);
+    var label = el('p', 'scan-label is-scanning', COPY.clearWorking + '\u2026');
+    add(top, label);
+    add(card, top);
+    add(card, el('p', 'scan-note',
+      'The diagnostics lane is single-flight: nothing else can query the ECU ' +
+      'until this finishes. Cancelling stops the wait here, not the ECU.'));
+    add(wrap, card);
+  }
+
+  function renderClearDone(wrap) {
+    var res = S.clear.result || {};
+    var card = el('div', 'card verdict');
+    card.id = 'clearCard';
+    card.setAttribute('data-sev', 'ok');
+    var top = el('div', 'scan-top');
+    var mark = el('span', 'scan-mark is-done');
+    mark.setAttribute('aria-hidden', 'true');
+    add(top, mark);
+    add(top, el('p', 'scan-label', COPY.clearDoneHead));
+    add(card, top);
+    var seen = (res.codes_seen_before !== undefined && res.codes_seen_before !== null)
+      ? num(res.codes_seen_before, 0) : '\u2013';
+    add(card, el('p', 'verdict-sub',
+      COPY.clearDoneHead + ': ' + seen + ' code(s) held before the reset' +
+      (res.duration_s !== undefined && res.duration_s !== null
+        ? ' \u00b7 confirmed in ' + num(res.duration_s, 1) + ' s' : '') + '.'));
+    if (res.permanent_codes_note) {
+      add(card, el('p', 'verdict-sub', res.permanent_codes_note));
+    } else if (clearCounts().permanent > 0) {
+      add(card, el('p', 'verdict-sub', COPY.permanent));
+    }
+    add(wrap, card);
+
+    var follow = el('div', 'card');
+    add(follow, el('p', 'group-title', COPY.clearFollowTitle));
+    if (res.followup && res.followup.message) {
+      add(follow, el('p', 'verdict-sub', res.followup.message));
+    }
+    add(follow, el('p', 'verdict-sub', COPY.afterClear));
+    // The honest proof the reset landed: the wall re-read automatically
+    // after the clear, so the all-incomplete state is shown, not claimed.
+    if (S.clear.rereading) {
+      add(follow, el('p', 'stamp', COPY.clearReread));
+    } else if (S.clear.reread) {
+      add(follow, el('p', 'stamp', S.clear.reread));
+    }
+    var gBtn = el('button', 'btn btn-quiet ctl');
+    gBtn.type = 'button';
+    gBtn.textContent = S.clear.guide ? COPY.clearGuideHide : COPY.clearGuideShow;
+    gBtn.style.marginTop = '8px';
+    gBtn.addEventListener('click', function () { S.clear.guide = !S.clear.guide; render(); });
+    add(follow, gBtn);
+    if (S.clear.guide) {
+      add(follow, el('p', 'verdict-sub', COPY.driveCycle));
+    }
+    add(wrap, follow);
+    revealOnce(follow, 'clear:done:' + (S.clear.at || 0));
+  }
+
+  function clearServerMessage(res) {
+    if (res && res.data && (res.data.message || res.data.error)) {
+      return res.data.message || res.data.error;
+    }
+    if (res && res.error) { return res.error; }
+    return 'HTTP ' + (res ? res.status : '?');
+  }
+
+  function postClear() {
+    if (S.clearBusy) { toast(COPY.clearBusy, 'warn'); return; }
+    if (!S.clear || !S.clear.checked) { return; }
+    if (!laneOnline()) { toast(COPY.clearOffline, 'warn'); return; }
+    S.clearBusy = true;
+    S.clear.stage = 'working';
+    S.clear.timedOut = false;
+    S.clear.cancelled = false;
+    S.clear.result = null;
+    render();
+    var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    S.clearAbort = ctrl;
+    var timer = window.setTimeout(function () {
+      if (S.clear) { S.clear.timedOut = true; }
+      if (ctrl) { try { ctrl.abort(); } catch (err) { /* already settled */ } }
+    }, clearTimeoutMs());
+    var opts = { method: 'POST', cache: 'no-store', headers: { 'Accept': 'application/json' } };
+    if (ctrl) { opts.signal = ctrl.signal; }
+    fetch('/clear?confirm=yes', opts)
+      .then(function (res) {
+        return res.text().then(function (body) {
+          var data = null;
+          try { data = JSON.parse(body); } catch (err) { data = null; }
+          return { ok: res.ok, status: res.status, data: data, raw: body,
+                   error: res.ok ? null : ('HTTP ' + res.status) };
+        });
+      })
+      .then(function (res) { finishClear(res, timer); })
+      .catch(function (err) {
+        finishClear({ ok: false, status: 0, data: null, raw: '',
+                      error: (err && err.name === 'AbortError') ? 'aborted' : 'network error' }, timer);
+      });
+  }
+
+  function cancelClear() {
+    if (!S.clearBusy) { return; }
+    if (S.clear) { S.clear.cancelled = true; }
+    if (S.clearAbort) { try { S.clearAbort.abort(); } catch (err) { /* already settled */ } }
+  }
+
+  function finishClear(res, timer) {
+    if (timer) { window.clearTimeout(timer); }
+    S.clearAbort = null;
+    S.clearBusy = false;
+    if (!S.clear) { return; }
+    var card = function () { return $('clearCard'); };
+    if (S.clear.cancelled) {
+      S.clear.cancelled = false;
+      S.clear.stage = 'confirm';
+      toast(COPY.clearCancelled, 'warn');
+      if (S.screen === 'S11') { render(); }
+      return;
+    }
+    if (S.clear.timedOut || (res && !res.ok && res.status === 0 && res.error === 'aborted')) {
+      S.clear.timedOut = false;
+      S.clear.stage = 'confirm';
+      toast(COPY.clearTimeout, 'bad');
+      if (S.screen === 'S11') { render(); shakeOnce(card()); }
+      return;
+    }
+    if (!res || !res.ok || !res.data || res.data.ok === false) {
+      var msg = clearServerMessage(res);
+      S.clear.stage = 'confirm';
+      if (res && res.status === 409) {
+        // Contention, not a verdict on the car: snackbar only, no shake.
+        toast(msg, 'warn');
+      } else {
+        toast('Clear failed: ' + msg, 'bad');
+      }
+      if (S.screen === 'S11') { render(); }
+      if (!(res && res.status === 409)) { shakeOnce(card()); }
+      return;
+    }
+    S.clear.result = res.data;
+    S.clear.stage = 'done';
+    S.clear.at = Date.now();
+    S.clear.reread = null;
+    toast(COPY.clearDoneHead + (res.data.duration_s !== undefined && res.data.duration_s !== null
+      ? ' in ' + num(res.data.duration_s, 1) + ' s.' : '.'), 'info');
+    if (S.screen === 'S11') { render(); }
+    markClearDone();
+    rereadAfterClear();
+  }
+
+  // Proof the reset landed: re-read codes + readiness and merge them into
+  // the cached report, so S3/S5 show the post-clear state instead of stale
+  // pre-clear rows. Never clobbers identity/Mode 06/deep sections.
+  function rereadAfterClear() {
+    if (!S.clear) { return; }
+    S.clear.rereading = true;
+    if (S.screen === 'S11') { render(); }
+    fetchJSON('/scan?sections=' + QUICK.join(',')).then(function (res) {
+      if (!S.clear) { return; }
+      S.clear.rereading = false;
+      if (res.ok && res.data && res.data.report) {
+        var fresh = res.data.report;
+        if (S.scan && S.scan.report) {
+          if (fresh.codes) { S.scan.report.codes = fresh.codes; }
+          if (fresh.monitors) { S.scan.report.monitors = fresh.monitors; }
+          if (fresh.readiness) { S.scan.report.readiness = fresh.readiness; }
+        }
+        var codes = fresh.codes || {};
+        var open = (fresh.readiness && fresh.readiness.incomplete)
+          ? fresh.readiness.incomplete.length : null;
+        S.clear.reread = 'Readiness re-read' +
+          (res.data.duration_s !== undefined && res.data.duration_s !== null
+            ? ' (' + num(res.data.duration_s, 1) + ' s)' : '') + ': ' +
+          (((codes.stored || []).length) + ' stored code(s) \u00b7 ' +
+          (open === null ? 'readiness wall updated' : (open + ' monitor(s) Not ready')));
+      } else {
+        toast(COPY.clearRereadFail, 'warn');
+      }
+      if (S.screen === 'S11') { render(); }
+    });
+  }
+
+  // Motion twins of syncScanMotion/markScanDone for the S11 status row: the
+  // SAME classes (.scan-mark/.is-busy/.is-done, .scan-label/.swap-in) and
+  // the SAME helpers (swapText), so no new animation exists to audit.
+  function syncClearMotion() {
+    var label = document.querySelector('#clearWrap .scan-label');
+    if (label) { swapText(label, COPY.clearWorking + '\u2026'); }
+  }
+
+  function markClearDone() {
+    var mark = document.querySelector('#clearWrap .scan-mark');
+    if (mark) { mark.classList.remove('is-busy'); mark.classList.add('is-done'); }
+    var label = document.querySelector('#clearWrap .scan-label');
+    if (label) { label.classList.remove('is-scanning'); swapText(label, COPY.clearDoneHead); }
+  }
+
   /* ------------------------------------------------------------- actions */
 
   function button(label, cls, onTap, enabled) {
@@ -1495,6 +1856,9 @@
       plan.push(button('Report', '', function () { go('S8'); loadReport(); }));
     } else if (S.screen === 'S3') {
       plan.push(button('Health summary', '', function () { go('S2'); }));
+      // Mode 04 entry: gated on the live lane, never on cached state. A dead
+      // link means the ECU cannot confirm a reset, so the button stays inert.
+      plan.push(button('Clear fault codes', 'btn-primary', openClear, laneOnline()));
       plan.push(el('span', 'grow'));
       plan.push(el('span', 'note', codeList(S.dtcTab).length + ' ' + S.dtcTab + ' code(s)'));
     } else if (S.screen === 'S4') {
@@ -1543,6 +1907,23 @@
       plan.push(c);
       plan.push(el('span', 'grow'));
       plan.push(el('span', 'note', 'paste into a GitHub issue'));
+    } else if (S.screen === 'S11') {
+      var stage = S.clear ? S.clear.stage : 'confirm';
+      if (stage === 'working') {
+        plan.push(button('Cancel', '', cancelClear, true));
+        plan.push(el('span', 'grow'));
+        plan.push(el('span', 'note', COPY.clearWorking + '\u2026'));
+      } else if (stage === 'done') {
+        plan.push(button(COPY.clearBack, '', function () { go('S3'); }));
+        plan.push(button('Readiness wall', 'btn-primary', function () { go('S5'); }, !!(S.scan && S.scan.report)));
+        plan.push(el('span', 'grow'));
+        plan.push(el('span', 'note', 'monitors reset'));
+      } else {
+        plan.push(button(COPY.clearBack, '', function () { go('S3'); }));
+        plan.push(el('span', 'grow'));
+        plan.push(button(COPY.clearClearNow, 'btn-danger',
+          postClear, !!(S.clear && S.clear.checked) && !S.clearBusy));
+      }
     }
 
     plan.forEach(function (n) { bar.appendChild(n); });
