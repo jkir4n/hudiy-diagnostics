@@ -662,6 +662,18 @@ body.reduced-motion .track-fill { animation: none; width: 100%; opacity: .5; }
   accent-color: var(--info);
   cursor: pointer;
 }
+/* S11 ack footer (t_ef0df5b1): the fix-first row gates a destructive action,
+ * so it is pinned BELOW the scroll region instead of living inside it. The
+ * old layout put the row last inside #clearWrap, whose flex item never shrank
+ * (default min-height:auto), so the row overflowed #main and painted under
+ * the statebar chips - keyboard/wheel could still toggle it, but touch taps
+ * landed on the chip. Now the consequence list scrolls above while the ack
+ * row sits in the grid's main row, where no overlay can cover it. S11-only;
+ * every other screen is untouched. */
+#S11.active #clearWrap { flex: 1 1 auto; min-height: 0; }
+#clearAck { flex: 0 0 auto; }
+#clearAck:empty { display: none; }
+#clearAck .check-row { margin-top: 0; }
 
 /* ---------------------------------------------------------------- focus */
 

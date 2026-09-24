@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Playwright smoke for the S11 Mode-04 clear flow (800x480, keyboard only).
+"""Playwright smoke for the S11 Mode-04 clear flow (800x480, keyboard-led).
 
 Serves the real page from a replay backend; mocks /scan (fast, with codes).
 The happy path drives the REAL POST /clear; 400/409/502 + the slow timeout
 stay mocked. Asserts the full two-step walk, knob/shim reachability, both
-outcome states, the offline gate, and zero app console errors. Screenshots
-land next to this script.
+outcome states, the offline gate, the S11 ack-footer geometry + a real
+touch-tap parity proof (t_ef0df5b1), and zero app console errors.
+Screenshots land next to this script.
 
 Run from the repo root:  python3 smoke/clear_smoke.py
 Needs: replay backend on 127.0.0.1:44419
@@ -50,6 +51,54 @@ def arrows_to(page, needle, limit=14):
 
 def screen(page):
     return page.evaluate("document.body.getAttribute('data-screen')")
+
+
+def ack_geometry(page):
+    """Rects + hit-test points for the S11 fix-first gate (t_ef0df5b1)."""
+    return page.evaluate("""(() => {
+      const R = s => { const e = document.querySelector(s);
+        if (!e) return null; const r = e.getBoundingClientRect();
+        return {top: r.top, bottom: r.bottom, left: r.left, right: r.right}; };
+      const b = document.querySelector('#clearFixFirst');
+      const r = b ? b.getBoundingClientRect() : null;
+      const pts = r ? [[r.left + r.width / 2, r.top + r.height / 2],
+                       [r.left + 8, r.top + r.height / 2],
+                       [r.right - 8, r.top + r.height / 2],
+                       [r.left + r.width / 2, r.top + 8],
+                       [r.left + r.width / 2, r.bottom - 8]] : [];
+      const hits = pts.map(p => { const h = document.elementFromPoint(p[0], p[1]);
+        return h ? (h.id || (h.tagName + '.' + h.className)) : null; });
+      return {box: R('#clearFixFirst'), row: R('#clearAck .check-row'),
+              statebar: R('#stateBar'), actions: R('#actions'), hits: hits,
+              cx: r ? r.left + r.width / 2 : null,
+              cy: r ? r.top + r.height / 2 : null};
+    })()""")
+
+
+def check_ack_geometry(page, stage):
+    # t_ef0df5b1: the fix-first gate must sit fully visible in the S11 ack
+    # footer (below the scroller, above the statebar) - never under an
+    # overlay - both at initial open and after the keyboard walk. The old
+    # layout failed this: checkbox y 379..401 vs scroller bottom 380 with
+    # elementFromPoint hitting SPAN.state-chip, so touch taps never reached
+    # the box. (The checkbox intentionally lives OUTSIDE .scroll now, so the
+    # assertion is footer-placement, not scroller-containment.)
+    g = ack_geometry(page)
+    check("s11 ack (%s): row above statebar" % stage,
+          g["row"] and g["statebar"]
+          and g["row"]["bottom"] <= g["statebar"]["top"],
+          repr(g["row"]))
+    check("s11 ack (%s): row above actions bar" % stage,
+          g["row"] and g["actions"]
+          and g["row"]["bottom"] <= g["actions"]["top"],
+          repr(g["row"]))
+    check("s11 ack (%s): row inside 800x480" % stage,
+          g["row"] and g["row"]["top"] >= 0 and g["row"]["bottom"] <= 480,
+          repr(g["row"]))
+    check("s11 ack (%s): hit test is the checkbox x5" % stage,
+          g["hits"] and all(h == "clearFixFirst" for h in g["hits"]),
+          repr(g["hits"]))
+    return g
 
 
 def txt(page, sel):
@@ -105,7 +154,11 @@ def main():
     errors = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        ctx = browser.new_context(viewport={"width": 800, "height": 480})
+        # has_touch: the kiosk is a touch surface; the S11 parity proof taps
+        # the real coordinates (t_ef0df5b1). Keyboard/mouse behaviour is
+        # unchanged by the flag.
+        ctx = browser.new_context(viewport={"width": 800, "height": 480},
+                                  has_touch=True)
         state = {"scan_calls": 0, "clear_mode": "ok",
                  "saw_shake": False, "health_mode": "real",
                  "pending_clear": []}
@@ -228,6 +281,23 @@ def main():
                   box and not box.is_checked())
             page.screenshot(path=os.path.join(HERE, "clear-screen1.png"))
 
+            # t_ef0df5b1 parity proof, initial-open state: geometry first,
+            # then a REAL touch tap on the coordinates (not a click()). The
+            # second tap restores unchecked so the keyboard walk below starts
+            # exactly where it used to.
+            g0 = check_ack_geometry(page, "initial-open")
+            page.touchscreen.tap(g0["cx"], g0["cy"])
+            page.wait_for_timeout(250)
+            check("touch tap toggles the checkbox",
+                  page.query_selector("#clearFixFirst").is_checked())
+            check("touch tap enables Clear now",
+                  not page.query_selector(
+                      "#actions button.btn-danger").is_disabled())
+            page.touchscreen.tap(g0["cx"], g0["cy"])
+            page.wait_for_timeout(250)
+            check("touch tap toggles back off",
+                  not page.query_selector("#clearFixFirst").is_checked())
+
             # knob/shim reachability over the same DOM. Clear-now is gated
             # (disabled skips the ring, like every disabled control), so
             # check the box first, then walk: all three stops must appear.
@@ -274,6 +344,9 @@ def main():
                 check("clear-now enables",
                       not page.query_selector(
                           "#actions button.btn-danger").is_disabled())
+                # t_ef0df5b1 parity proof, post keyboard-walk state: the gate
+                # must still be fully visible and touch-tappable.
+                check_ack_geometry(page, "post-walk")
                 if not arrows_to(page, "Clear now"):
                     check("keyboard finds Clear now", False)
                 else:

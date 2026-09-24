@@ -1561,10 +1561,12 @@
   function renderClear() {
     var wrap = $('clearWrap');
     clear(wrap);
+    var ack = $('clearAck');
+    if (ack) { clear(ack); }
     if (!S.clear) { S.clear = { stage: 'confirm', checked: false, result: null, error: null, guide: false, rereading: false }; }
     if (S.clear.stage === 'done') { renderClearDone(wrap); }
     else if (S.clear.stage === 'working') { renderClearWorking(wrap); }
-    else { renderClearConfirm(wrap); }
+    else { renderClearConfirm(wrap, ack); }
   }
 
   function clearHead(wrap, sev, headline) {
@@ -1576,7 +1578,7 @@
     return card;
   }
 
-  function renderClearConfirm(wrap) {
+  function renderClearConfirm(wrap, ack) {
     var counts = clearCounts();
     var total = counts.stored + counts.pending + counts.permanent;
     var card = clearHead(wrap, 'warn',
@@ -1601,7 +1603,12 @@
     // Fix-first checkbox: a wrapping label is the .ctl (one focus stop, not
     // two). label.click() forwards to the input, so knob/shim 'activate',
     // keyboard space/enter and touch all toggle through the same 'change'
-    // event with no double-toggle.
+    // event with no double-toggle. The row lives in the #clearAck footer
+    // BELOW the scroll region (t_ef0df5b1), never inside the card: inside the
+    // scroller it overflowed #main under the statebar chips at 800x480, where
+    // touch taps landed on the chip instead of the box. DOM order is
+    // unchanged (ack follows the scroller), so the knob/shim walk order -
+    // checkbox, then the action-bar buttons - is exactly as before.
     var row = el('label', 'check-row ctl');
     var box = document.createElement('input');
     box.type = 'checkbox';
@@ -1614,7 +1621,7 @@
     });
     row.appendChild(box);
     add(row, el('span', null, COPY.clearFixFirst));
-    add(card, row);
+    add(ack || card, row);
     var meta = el('p', 'stamp', counts.stored + ' stored \u00b7 ' + counts.pending +
       ' pending \u00b7 ' + counts.permanent + ' permanent \u00b7 ' +
       'from the last scan' + (S.scanAt ? ' (' + S.scanAt.toLocaleTimeString() + ')' : ''));

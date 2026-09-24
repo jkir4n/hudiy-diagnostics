@@ -2,6 +2,30 @@
 
 All notable changes. Format: date — phase — what.
 
+## 2026-09-24 — S11 fix-first checkbox geometry fix (frontend, branch `fix-s11-checkbox`)
+
+### Fixed
+- S11 `Clear fault codes`: the fix-first checkbox row moved out of the scroll
+  region into a pinned ack footer (`#clearAck`) below it. At 800x480 the row
+  used to overflow `#main` (checkbox y 379..401 vs scroller bottom 380) and
+  paint under the statebar chips, so keyboard/wheel could toggle it but touch
+  taps landed on `SPAN.state-chip` — input parity broken on the gate for a
+  destructive action. The consequence list + stamps still scroll above; the ack
+  row sits in the grid's main row where no overlay can cover it. S11-only:
+  no other screen, no seam contract, no confirm gate touched.
+- `smoke/clear_smoke.py`: 11 new checks (57 total) — ack-footer geometry
+  (row above statebar/actions, inside 800x480, 5-point `elementFromPoint` hit
+  test) at initial open AND after the keyboard walk, plus a real touch tap
+  (touchscreen, not click) proving the tap toggles the box and enables
+  `Clear now`. Context now `has_touch=True` (kiosk is a touch surface).
+
+### Verified
+- `python3 smoke/clear_smoke.py`: 57/57, zero app console/page errors (old 46
+  intact, none weakened).
+- `python3 tools/contrast_audit.py` exit 0 (dark + light + fallback).
+- `python3 -m unittest discover -s backend/tests -t .`: 169 run green
+  (skipped=2), backend untouched (`git diff master -- backend/` empty).
+
 ## 2026-09-24 — Two-screen DTC-clear confirm flow (frontend, branch `fe-clear-dtc`)
 
 ### Added
