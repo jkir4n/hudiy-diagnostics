@@ -29,12 +29,21 @@ Endpoints (``/diag/<name>`` is accepted as an alias of every one of them, and
 ``GET /capability``         compatibility sheet (``?format=json|text``)
 ``GET /dtc?code=&maker=``  DTC text lookup (generic + maker-specific)
 ``GET /vin?vin=&online=``  offline VIN decode, optional bounded online enrich
+``POST /clear``            Mode 04 clear (needs ``confirm=yes`` in the query
+                           string or the POST body - form or JSON - plus the
+                           consequence list + fix-first acknowledgement; the
+                           backend is the safety boundary, the UI cannot
+                           bypass it)
 ``POST /ui/hide``          hide our own overlay (the page's Exit path)
 
-The one write endpoint is the UI's own Exit: closing a Hudiy custom overlay is
-a *control* action on Hudiy, so it is a POST to ``/ui/hide``. It changes
-nothing on the car and never fails the request because the control link is
-down - it answers ``200`` with ``sent: false`` and a reason instead.
+The write endpoints are the UI's own Exit and the gated Mode 04 clear.
+Closing a Hudiy custom overlay is a *control* action on Hudiy, so it is a
+POST to ``/ui/hide``. It changes nothing on the car and never fails the
+request because the control link is down - it answers ``200`` with
+``sent: false`` and a reason instead. Clearing codes is a *car* action, so
+``POST /clear`` additionally requires ``confirm=yes`` (query or body) and
+answers 502 when the clear was not confirmed - the message always says the
+codes were NOT confirmed cleared.
 """
 
 from __future__ import annotations
@@ -77,12 +86,14 @@ _STATIC_TYPES = {
 
 from backend.diag import __version__ as diag_version  # noqa: E402
 from backend.diag import capability as capability_mod  # noqa: E402
+from backend.diag import clear as clear_mod  # noqa: E402
 from backend.diag import config as config_mod  # noqa: E402
 from backend.diag import dtc as dtc_mod  # noqa: E402
 from backend.diag import fixtures as fixtures_mod  # noqa: E402
 from backend.diag import hosts as hosts_mod  # noqa: E402
 from backend.diag import hudiy_control as hudiy_mod  # noqa: E402
 from backend.diag import lane as lane_mod  # noqa: E402
+from backend.diag import names as names_mod  # noqa: E402
 from backend.diag import report as report_mod  # noqa: E402
 from backend.diag import scan as scan_mod  # noqa: E402
 from backend.diag import vin as vin_mod  # noqa: E402
@@ -108,6 +119,9 @@ FORMAT_ALIASES = {"text": "txt", "txt": "txt", "json": "json", "csv": "csv"}
 
 #: Online VIN decode is a courtesy, never a reason to hold a request open.
 VIN_ONLINE_MAX_S = 5.0
+
+#: Biggest POST body the lane will read. A confirm flag is bytes, not a dump.
+MAX_POST_BODY_BYTES = 64 * 1024
 
 #: OBD states that mean "do not even try to scan".
 _BLOCKING_STATES = ("offline", lane_mod.STATE_UNAVAILABLE)
@@ -184,6 +198,7 @@ class DiagService:
         self._started = clock()
         self._build_lock = threading.RLock()
         self._scan_lock = threading.Lock()
+        self._clear_lock = threading.Lock()
         self._built = False
         self._error: Optional[str] = None
         self._host_factory = host_factory
@@ -419,6 +434,9 @@ class DiagService:
                 listed, obd=obd)
         if not self._scan_lock.acquire(blocking=False):
             raise Busy("a scan is already running on this lane")
+        if self._clear_lock.locked():
+            self._scan_lock.release()
+            raise Busy("a clear is already running on this lane")
         engine = self.engine
         if engine is None:
             self._scan_lock.release()
@@ -455,6 +473,111 @@ class DiagService:
             "obd": obd,
             "report": report,
         }
+
+    def clear(self, confirm: Optional[str] = None) -> dict:
+        """Clear stored DTCs (Mode 04) behind the confirm gate.
+
+        ``confirm`` must be ``yes`` (query string or POST body) or the
+        request is rejected before anything touches the lane. On success the
+        payload matches the frontend seam contract exactly::
+
+            {"ok": True, "status": "done", "mode04_positive": True,
+             "duration_s": <float>, "codes_seen_before": <int>,
+             "followup": {"readiness": "incomplete",
+                          "message": "monitors reset; drive cycle needed"},
+             "permanent_codes_note": <honesty line>}
+
+        A car that answers negatively gets a structured 200 (``unsupported``
+        for NO DATA silence, ``refused`` for ``7F 04 <NRC>``) - never a hang.
+        A timeout or an unrecognised reply is a 502: the codes were NOT
+        confirmed cleared, and the message says so.
+        """
+        started = self._clock()
+        if confirm is None or str(confirm).strip().lower() != "yes":
+            raise BadRequest(clear_mod.CONFIRM_REQUIRED_MESSAGE)
+        self._ensure()
+        if self._error:
+            return self._degraded(STATUS_UNAVAILABLE, self._error, None)
+        obd = self.obd_state()
+        if obd["state"] in _BLOCKING_STATES:
+            return self._degraded(
+                STATUS_OFFLINE,
+                obd.get("reason") or "the OBD link is not answering",
+                None, obd=obd)
+        if not self._clear_lock.acquire(blocking=False):
+            raise Busy("a clear is already running on this lane")
+        try:
+            if getattr(self.engine, "running", False):
+                raise Busy("a scan is already running on this lane")
+            link = self.link
+            if link is None:  # pragma: no cover - _ensure builds or degrades
+                return self._degraded(STATUS_UNAVAILABLE,
+                                      self._error or "no OBD link", None,
+                                      obd=obd)
+            # codes_seen_before: a Mode 03 read first. Clearing with no codes
+            # is still legal (0 allowed), but a timed-out pre-read aborts the
+            # whole clear - never clear blind on a dead lane.
+            pre = link.query("03")
+            if pre.error:
+                raise ServiceError(
+                    clear_mod.unconfirmed_reason(
+                        "the stored-code pre-read failed (%s); nothing was "
+                        "sent to the car" % pre.error),
+                    status_code=502)
+            seen_before = clear_mod.count_stored_codes(pre.decoded)
+            result = link.query(clear_mod.MODE04_COMMAND)
+            if result.error:
+                raise ServiceError(
+                    clear_mod.unconfirmed_reason(result.error),
+                    status_code=502)
+            interpreted = clear_mod.interpret_mode04(result.raw_items)
+            outcome = interpreted["outcome"]
+            duration = round(self._clock() - started, 2)
+            note = clear_mod.PERMANENT_CODES_NOTE
+            if outcome == clear_mod.OUTCOME_POSITIVE:
+                return {
+                    "ok": True,
+                    "status": "done",
+                    "mode04_positive": True,
+                    "duration_s": duration,
+                    "codes_seen_before": seen_before,
+                    "followup": dict(clear_mod.FOLLOWUP),
+                    "permanent_codes_note": note,
+                }
+            if outcome == clear_mod.OUTCOME_NO_DATA:
+                return {
+                    "ok": False,
+                    "status": "unsupported",
+                    "mode04_positive": False,
+                    "duration_s": duration,
+                    "codes_seen_before": seen_before,
+                    "reason": clear_mod.unsupported_reason(),
+                    "permanent_codes_note": note,
+                }
+            if outcome == clear_mod.OUTCOME_NEGATIVE:
+                decoded = interpreted["decoded"]
+                nrc = getattr(decoded, "nrc", None)
+                return {
+                    "ok": False,
+                    "status": "refused",
+                    "mode04_positive": False,
+                    "duration_s": duration,
+                    "codes_seen_before": seen_before,
+                    "nrc": ("0x%02X" % nrc if nrc is not None else None),
+                    "nrc_name": (names_mod.nrc_name(nrc)
+                                 if nrc is not None else None),
+                    "reason": clear_mod.refusal_reason(nrc),
+                    "permanent_codes_note": note,
+                }
+            decoded = interpreted["decoded"]
+            raise ServiceError(
+                clear_mod.unconfirmed_reason(
+                    "unexpected reply %r (status %s)"
+                    % (getattr(decoded, "raw_text", ""),
+                       getattr(decoded, "status", "?"))),
+                status_code=502)
+        finally:
+            self._clear_lock.release()
 
     def report_response(self, fmt: str = "text") -> Response:
         """Render the current report; scan first if none has run yet."""
@@ -595,15 +718,19 @@ class DiagService:
                 "/dtc": "DTC text lookup (?code=P0401&maker=volkswagen)",
                 "/vin": "VIN decode (?vin=...&online=0|1)",
                 "POST /ui/hide": "hide our own Hudiy overlay (the Exit button)",
+                "POST /clear": "Mode 04 clear (?confirm=yes, or confirm=yes in "
+                               "the POST body as form/JSON)",
             },
             "aliases": "/diag/<name> and /diag/status + /diag/report.txt work too",
         }
 
     # --- request routing ----------------------------------------------------
 
-    def handle(self, method: str, path: str, query: Optional[dict] = None) -> Response:
+    def handle(self, method: str, path: str, query: Optional[dict] = None,
+               body: Optional[dict] = None) -> Response:
         """Turn one request into a response. Never raises for a car problem."""
         query = query or {}
+        body = body or {}
         if method not in ("GET", "HEAD", "POST"):
             raise ServiceError("%s is not supported (read-only service)" % method,
                                status_code=405)
@@ -620,9 +747,16 @@ class DiagService:
                 return json_response(self.ui_hide())
             raise NotFound("no UI endpoint %r (see / for the list)" % path)
         if method == "POST":
-            # Only the UI's own control endpoints accept a body; everything else
-            # stays read-only, and a POST must never look like a scan trigger.
-            raise ServiceError("POST is only supported on /ui/*", status_code=405)
+            # Only the UI's own control endpoints and the gated clear accept a
+            # body; everything else stays read-only, and a POST must never
+            # look like a scan trigger.
+            if target == "/clear":
+                confirm = _first(query, "confirm")
+                if confirm is None:
+                    confirm = _first(body, "confirm")
+                return json_response(self.clear(confirm=confirm))
+            raise ServiceError("POST is only supported on /ui/* and /clear",
+                               status_code=405)
         try:
             if target == "/health":
                 return json_response(self.health())
@@ -643,6 +777,13 @@ class DiagService:
                 return json_response(self.vin_response(_first(query, "vin"),
                                                        online=_first(query, "online"),
                                                        maker=_first(query, "maker")))
+            if target == "/clear":
+                # Clearing codes over GET is refused outright: the confirm
+                # gate lives on POST so a link, prefetch or log replay can
+                # never trigger a clear.
+                raise ServiceError("use POST /clear with confirm=yes - "
+                                   "clearing codes over GET is refused",
+                                   status_code=405)
             if target == "/":
                 return json_response(self.index())
             raise NotFound("no endpoint %r (see / for the list)" % path)
@@ -673,6 +814,41 @@ class DiagService:
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+
+def parse_post_body(raw: bytes, content_type: str) -> dict:
+    """Turn a POST body into a ``parse_qs``-shaped dict (values are lists).
+
+    JSON objects (``{"confirm": "yes"}``) and form bodies (``confirm=yes``)
+    both work; anything else parses to ``{}`` rather than raising, because an
+    unreadable body on ``/clear`` must fail at the confirm gate (400), never
+    with a 500. Keys and values are coerced to stripped strings.
+    """
+    if not raw:
+        return {}
+    text = raw.decode("utf-8", "replace")
+    ctype = (content_type or "").split(";", 1)[0].strip().lower()
+    if ctype == "application/json" or text.lstrip().startswith("{"):
+        try:
+            obj = json.loads(text)
+        except ValueError:
+            obj = None
+        if isinstance(obj, dict):
+            out = {}
+            for key, value in obj.items():
+                if isinstance(value, (list, tuple)):
+                    out[str(key)] = ["" if item is None else str(item)
+                                     for item in value]
+                elif value is None:
+                    out[str(key)] = [""]
+                else:
+                    out[str(key)] = [str(value)]
+            return out
+        return {}
+    try:
+        return urllib.parse.parse_qs(text, keep_blank_values=True)
+    except ValueError:  # pragma: no cover - parse_qs rarely raises
+        return {}
+
 
 def _first(query: dict, key: str) -> Optional[str]:
     """First value of a query parameter, or None (a list-wrapped parse_qs)."""
@@ -768,23 +944,32 @@ class DiagRequestHandler(BaseHTTPRequestHandler):
         self._serve("HEAD")
 
     def do_POST(self) -> None:
-        """Only the UI's own control endpoints (e.g. ``POST /ui/hide``)."""
-        self._drain_body()
-        self._serve("POST")
+        """The UI's own control endpoints (``POST /ui/hide``) + ``POST /clear``."""
+        body, content_type = self._read_body()
+        self._serve("POST", body=body, content_type=content_type)
 
-    def _drain_body(self) -> None:
+    def _read_body(self):
         """Consume the request body so HTTP/1.1 keep-alive stays in sync."""
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except (TypeError, ValueError):
             length = 0
+        raw = b""
         if length > 0:
+            # A confirm flag is bytes, not a dump: cap the read so a junk
+            # body can neither hold the connection nor blow up memory.
             try:
-                self.rfile.read(length)
+                raw = self.rfile.read(min(length, MAX_POST_BODY_BYTES))
             except OSError:  # pragma: no cover - client vanished
-                pass
+                raw = b""
+        return raw, self.headers.get("Content-Type") or ""
 
-    def _serve(self, method: str) -> None:
+    def _drain_body(self) -> None:
+        """Consume and discard the request body (kept for compatibility)."""
+        self._read_body()
+
+    def _serve(self, method: str, body: bytes = b"",
+               content_type: str = "") -> None:
         started = time.monotonic()
         try:
             parsed = urllib.parse.urlsplit(self.path)
@@ -793,7 +978,8 @@ class DiagRequestHandler(BaseHTTPRequestHandler):
             service = server.service if isinstance(server, DiagHTTPServer) else None
             if service is None:  # pragma: no cover - misconfigured server
                 raise ServiceError("server has no diagnostics service")
-            response = service.handle(method, parsed.path, query)
+            params = parse_post_body(body, content_type) if method == "POST" else {}
+            response = service.handle(method, parsed.path, query, params)
         except ServiceError as exc:
             response = json_response(_error_body(exc.status, str(exc)),
                                      getattr(exc, "status_code", 500))
